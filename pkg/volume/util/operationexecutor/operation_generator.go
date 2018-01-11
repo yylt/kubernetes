@@ -486,7 +486,7 @@ func (og *operationGenerator) GenerateMountVolumeFunc(
 
 			// Update actual state of world to reflect volume is globally mounted
 			markDeviceMountedErr := actualStateOfWorld.MarkDeviceAsMounted(
-				volumeToMount.VolumeName)
+				volumeToMount.VolumeName, devicePath, deviceMountPath)
 			if markDeviceMountedErr != nil {
 				// On failure, return error. Caller will log and retry.
 				return volumeToMount.GenerateErrorDetailed("MountVolume.MarkDeviceAsMounted failed", markDeviceMountedErr)
@@ -668,7 +668,7 @@ func (og *operationGenerator) GenerateUnmountDeviceFunc(
 	mounter mount.Interface) (func() error, string, error) {
 	// Get attacher plugin
 	attachableVolumePlugin, err :=
-		og.volumePluginMgr.FindAttachablePluginBySpec(deviceToDetach.VolumeSpec)
+		og.volumePluginMgr.FindAttachablePluginByName(deviceToDetach.PluginName)
 	if err != nil || attachableVolumePlugin == nil {
 		return nil, "", deviceToDetach.GenerateErrorDetailed("UnmountDevice.FindAttachablePluginBySpec failed", err)
 	}
@@ -678,21 +678,11 @@ func (og *operationGenerator) GenerateUnmountDeviceFunc(
 		return nil, attachableVolumePlugin.GetPluginName(), deviceToDetach.GenerateErrorDetailed("UnmountDevice.NewDetacher failed", err)
 	}
 
-	volumeAttacher, err := attachableVolumePlugin.NewAttacher()
-	if err != nil {
-		return nil, attachableVolumePlugin.GetPluginName(), deviceToDetach.GenerateErrorDetailed("UnmountDevice.NewAttacher failed", err)
-	}
-
 	return func() error {
-		deviceMountPath, err :=
-			volumeAttacher.GetDeviceMountPath(deviceToDetach.VolumeSpec)
-		if err != nil {
-			// On failure, return error. Caller will log and retry.
-			return deviceToDetach.GenerateErrorDetailed("GetDeviceMountPath failed", err)
-		}
+		deviceMountPath := deviceToDetach.DeviceMountPath
 		refs, err := attachableVolumePlugin.GetDeviceMountRefs(deviceMountPath)
 
-		if err != nil || hasMountRefs(deviceMountPath, refs) {
+		if err != nil || mount.HasMountRefs(deviceMountPath, refs) {
 			if err == nil {
 				err = fmt.Errorf("The device mount path %q is still mounted by other references %v", deviceMountPath, refs)
 			}
@@ -781,6 +771,13 @@ func (og *operationGenerator) GenerateMapVolumeFunc(
 
 	return func() error {
 		var devicePath string
+		// Set up global map path under the given plugin directory using symbolic link
+		globalMapPath, err :=
+			blockVolumeMapper.GetGlobalMapPath(volumeToMount.VolumeSpec)
+		if err != nil {
+			// On failure, return error. Caller will log and retry.
+			return volumeToMount.GenerateErrorDetailed("MapVolume.GetDeviceMountPath failed", err)
+		}
 		if volumeAttacher != nil {
 			// Wait for attachable volumes to finish attaching
 			glog.Infof(volumeToMount.GenerateMsgDetailed("MapVolume.WaitForAttach entering", fmt.Sprintf("DevicePath %q", volumeToMount.DevicePath)))
@@ -796,7 +793,7 @@ func (og *operationGenerator) GenerateMapVolumeFunc(
 
 			// Update actual state of world to reflect volume is globally mounted
 			markDeviceMappedErr := actualStateOfWorld.MarkDeviceAsMounted(
-				volumeToMount.VolumeName)
+				volumeToMount.VolumeName, devicePath, globalMapPath)
 			if markDeviceMappedErr != nil {
 				// On failure, return error. Caller will log and retry.
 				return volumeToMount.GenerateErrorDetailed("MapVolume.MarkDeviceAsMounted failed", markDeviceMappedErr)
@@ -818,13 +815,7 @@ func (og *operationGenerator) GenerateMapVolumeFunc(
 				return volumeToMount.GenerateErrorDetailed("MapVolume failed", fmt.Errorf("Device path of the volume is empty"))
 			}
 		}
-		// Set up global map path under the given plugin directory using symbolic link
-		globalMapPath, err :=
-			blockVolumeMapper.GetGlobalMapPath(volumeToMount.VolumeSpec)
-		if err != nil {
-			// On failure, return error. Caller will log and retry.
-			return volumeToMount.GenerateErrorDetailed("MapVolume.GetDeviceMountPath failed", err)
-		}
+
 		mapErr = og.blkUtil.MapDevice(devicePath, globalMapPath, string(volumeToMount.Pod.UID))
 		if mapErr != nil {
 			// On failure, return error. Caller will log and retry.
@@ -916,8 +907,7 @@ func (og *operationGenerator) GenerateUnmapVolumeFunc(
 		}
 		// Try to unmap podUID symlink under global map path dir
 		// plugins/kubernetes.io/{PluginName}/volumeDevices/{volumePluginDependentPath}/{podUID}
-		globalUnmapPath, err :=
-			blockVolumeUnmapper.GetGlobalMapPath(volumeToUnmount.VolumeSpec)
+		globalUnmapPath := volumeToUnmount.DeviceMountPath
 		if err != nil {
 			// On failure, return error. Caller will log and retry.
 			return volumeToUnmount.GenerateErrorDetailed("UnmapVolume.GetGlobalUnmapPath failed", err)
@@ -966,21 +956,13 @@ func (og *operationGenerator) GenerateUnmapDeviceFunc(
 	mounter mount.Interface) (func() error, string, error) {
 
 	// Get block volume mapper plugin
-	var blockVolumeMapper volume.BlockVolumeMapper
 	blockVolumePlugin, err :=
-		og.volumePluginMgr.FindMapperPluginBySpec(deviceToDetach.VolumeSpec)
+		og.volumePluginMgr.FindMapperPluginByName(deviceToDetach.PluginName)
 	if err != nil {
 		return nil, "", deviceToDetach.GenerateErrorDetailed("UnmapDevice.FindMapperPluginBySpec failed", err)
 	}
 	if blockVolumePlugin == nil {
 		return nil, "", deviceToDetach.GenerateErrorDetailed("UnmapDevice.FindMapperPluginBySpec failed to find BlockVolumeMapper plugin. Volume plugin is nil.", nil)
-	}
-	blockVolumeMapper, newMapperErr := blockVolumePlugin.NewBlockVolumeMapper(
-		deviceToDetach.VolumeSpec,
-		nil, /* Pod */
-		volume.VolumeOptions{})
-	if newMapperErr != nil {
-		return nil, "", deviceToDetach.GenerateErrorDetailed("UnmapDevice.NewBlockVolumeMapper initialization failed", newMapperErr)
 	}
 
 	blockVolumeUnmapper, newUnmapperErr := blockVolumePlugin.NewBlockVolumeUnmapper(
@@ -993,8 +975,7 @@ func (og *operationGenerator) GenerateUnmapDeviceFunc(
 	return func() error {
 		// Search under globalMapPath dir if all symbolic links from pods have been removed already.
 		// If symbolick links are there, pods may still refer the volume.
-		globalMapPath, err :=
-			blockVolumeMapper.GetGlobalMapPath(deviceToDetach.VolumeSpec)
+		globalMapPath := deviceToDetach.DeviceMountPath
 		if err != nil {
 			// On failure, return error. Caller will log and retry.
 			return deviceToDetach.GenerateErrorDetailed("UnmapDevice.GetGlobalMapPath failed", err)
