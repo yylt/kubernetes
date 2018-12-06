@@ -115,6 +115,7 @@ func (in *KubeControllerManagerConfiguration) DeepCopyInto(out *KubeControllerMa
 		copy(*out, *in)
 	}
 	out.ReconcilerSyncLoopPeriod = in.ReconcilerSyncLoopPeriod
+	out.ReconcilerMaxWaitForUnmountDuration = in.ReconcilerMaxWaitForUnmountDuration
 	return
 }
 

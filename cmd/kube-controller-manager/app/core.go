@@ -175,6 +175,15 @@ func startAttachDetachController(ctx ControllerContext) (bool, error) {
 	if ctx.Options.ReconcilerSyncLoopPeriod.Duration < time.Second {
 		return true, fmt.Errorf("Duration time must be greater than one second as set via command line option reconcile-sync-loop-period.")
 	}
+
+	timeConfig := attachdetach.DefaultTimerConfig
+	optionMaxWaitForUnmountDuration := ctx.Options.ReconcilerMaxWaitForUnmountDuration.Duration
+	if optionMaxWaitForUnmountDuration != 0 {
+		if optionMaxWaitForUnmountDuration < time.Minute {
+			return true, fmt.Errorf("MaxWaitForUnmountDuration must be greater than one minute as set via command line option attach-detach-reconcile-max-wait-unmount-duration.")
+		}
+		timeConfig.ReconcilerMaxWaitForUnmountDuration = optionMaxWaitForUnmountDuration
+	}
 	attachDetachController, attachDetachControllerErr :=
 		attachdetach.NewAttachDetachController(
 			ctx.ClientBuilder.ClientOrDie("attachdetach-controller"),
@@ -187,7 +196,7 @@ func startAttachDetachController(ctx ControllerContext) (bool, error) {
 			GetDynamicPluginProber(ctx.Options.VolumeConfiguration),
 			ctx.Options.DisableAttachDetachReconcilerSync,
 			ctx.Options.ReconcilerSyncLoopPeriod.Duration,
-			attachdetach.DefaultTimerConfig,
+			timeConfig,
 		)
 	if attachDetachControllerErr != nil {
 		return true, fmt.Errorf("failed to start attach/detach controller: %v", attachDetachControllerErr)
