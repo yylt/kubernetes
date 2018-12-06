@@ -31,10 +31,6 @@ type ResourceConfig struct {
 	CpuQuota *int64
 	// CPU quota period.
 	CpuPeriod *uint64
-	// CPU cpuset.cpus to use
-	CpusetCpus *string
-	// MEM cpuset.mems to use
-	CpusetMems *string
 	// HugePageLimit map from page size (in bytes) to limit (in bytes)
 	HugePageLimit map[int64]int64
 }

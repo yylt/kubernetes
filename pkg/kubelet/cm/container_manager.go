@@ -111,8 +111,6 @@ type NodeConfig struct {
 type NodeAllocatableConfig struct {
 	KubeReservedCgroupName   string
 	SystemReservedCgroupName string
-	KubePodsCpusetCpus   string
-	KubePodsCpusetMems   string
 	EnforceNodeAllocatable   sets.String
 	KubeReserved             v1.ResourceList
 	SystemReserved           v1.ResourceList
