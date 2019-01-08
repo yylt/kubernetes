@@ -161,6 +161,12 @@ func getRecentUnmetScheduleTimes(sj batchv1beta1.CronJob, now time.Time) ([]time
 		//
 		// I've somewhat arbitrarily picked 100, as more than 80,
 		// but less than "lots".
+
+		// We should always run CronJob even missed >100 times scheduler time
+		if len(starts) > 100 {
+			starts = []time.Time{}
+			starts = append(starts, t)
+		}
 		if len(starts) > 100 {
 			// We can't get the most recent times so just return an empty slice
 			return []time.Time{}, fmt.Errorf("Too many missed start time (> 100). Set or decrease .spec.startingDeadlineSeconds or check clock skew.")
