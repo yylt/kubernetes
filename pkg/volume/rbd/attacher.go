@@ -19,6 +19,8 @@ package rbd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/golang/glog"
@@ -191,6 +193,9 @@ func (detacher *rbdDetacher) UnmountDevice(deviceMountPath string) error {
 		return nil
 	}
 	devicePath, cnt, err := mount.GetDeviceNameFromMount(detacher.mounter, deviceMountPath)
+	if devicePath == "" {
+		devicePath, err = getDeviceNameFromKernel(detacher.plugin, deviceMountPath)
+	}
 	if err != nil {
 		return err
 	}
@@ -222,4 +227,32 @@ func (detacher *rbdDetacher) UnmountDevice(deviceMountPath string) error {
 // Detach implements Detacher.Detach.
 func (detacher *rbdDetacher) Detach(volumeName string, nodeName types.NodeName) error {
 	return nil
+}
+
+func getDeviceNameFromKernel(plugin *rbdPlugin,deviceMountPath string) (string, error) {
+	sourceName := filepath.Base(deviceMountPath)
+	s := strings.Split(sourceName, "-image-")
+	if len(s) != 2 {
+		return "", fmt.Errorf("Use RBD showmapped to get devicePath failed. sourceName %s wrong, should be pool+\"-image-\"+imageName", sourceName)
+	}
+	rbdPool := s[0]
+	rbdImage := s[1]
+
+	exec := plugin.host.GetExec(plugin.GetPluginName())
+
+	// rbd showmapped
+	cmdline := fmt.Sprintf("rbd showmapped | grep %s | grep %s", rbdPool, rbdImage)
+	output, err := exec.Run("sh", "-c", cmdline)
+	if err != nil {
+		return "", rbdErrors(err, fmt.Errorf("rbd: failed to showmapped, error %v, rbd output: %s", err, string(output)))
+	}
+	cmdline = fmt.Sprintf("echo \"%s\" | grep %s | grep %s | awk '{print $5}'", string(output), rbdPool, rbdImage)
+	result, err := exec.Run("sh", "-c", cmdline)
+	if err != nil {
+		return "", rbdErrors(err, fmt.Errorf("rbd: failed to showmapped, error %v, rbd output: %s", err, string(output)))
+	}
+	if devicePath := strings.TrimSpace(string(result)); devicePath != "" {
+		return devicePath, nil
+	}
+	return "", fmt.Errorf("Failed to get device name by rbd showmapped")
 }
