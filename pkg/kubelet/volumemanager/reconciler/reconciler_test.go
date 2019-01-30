@@ -479,7 +479,7 @@ func Test_Run_Positive_VolumeAttachAndMap(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{UID: "001", Name: "volume-name"},
 		Spec: v1.PersistentVolumeSpec{
 			Capacity:               v1.ResourceList{v1.ResourceName(v1.ResourceStorage): resource.MustParse("10G")},
-			PersistentVolumeSource: v1.PersistentVolumeSource{GCEPersistentDisk: &v1.GCEPersistentDiskVolumeSource{}},
+			PersistentVolumeSource: v1.PersistentVolumeSource{GCEPersistentDisk: &v1.GCEPersistentDiskVolumeSource{PDName: "fake-device1"}},
 			AccessModes: []v1.PersistentVolumeAccessMode{
 				v1.ReadWriteOnce,
 				v1.ReadOnlyMany,
@@ -570,7 +570,7 @@ func Test_Run_Positive_BlockVolumeMapControllerAttachEnabled(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{UID: "001", Name: "volume-name"},
 		Spec: v1.PersistentVolumeSpec{
 			Capacity:               v1.ResourceList{v1.ResourceName(v1.ResourceStorage): resource.MustParse("10G")},
-			PersistentVolumeSource: v1.PersistentVolumeSource{GCEPersistentDisk: &v1.GCEPersistentDiskVolumeSource{}},
+			PersistentVolumeSource: v1.PersistentVolumeSource{GCEPersistentDisk: &v1.GCEPersistentDiskVolumeSource{PDName: "fake-device1"}},
 			AccessModes: []v1.PersistentVolumeAccessMode{
 				v1.ReadWriteOnce,
 				v1.ReadOnlyMany,
@@ -662,7 +662,7 @@ func Test_Run_Positive_BlockVolumeAttachMapUnmapDetach(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{UID: "001", Name: "volume-name"},
 		Spec: v1.PersistentVolumeSpec{
 			Capacity:               v1.ResourceList{v1.ResourceName(v1.ResourceStorage): resource.MustParse("10G")},
-			PersistentVolumeSource: v1.PersistentVolumeSource{GCEPersistentDisk: &v1.GCEPersistentDiskVolumeSource{}},
+			PersistentVolumeSource: v1.PersistentVolumeSource{GCEPersistentDisk: &v1.GCEPersistentDiskVolumeSource{PDName: "fake-device1"}},
 			AccessModes: []v1.PersistentVolumeAccessMode{
 				v1.ReadWriteOnce,
 				v1.ReadOnlyMany,
@@ -764,7 +764,7 @@ func Test_Run_Positive_VolumeUnmapControllerAttachEnabled(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{UID: "001", Name: "volume-name"},
 		Spec: v1.PersistentVolumeSpec{
 			Capacity:               v1.ResourceList{v1.ResourceName(v1.ResourceStorage): resource.MustParse("10G")},
-			PersistentVolumeSource: v1.PersistentVolumeSource{GCEPersistentDisk: &v1.GCEPersistentDiskVolumeSource{}},
+			PersistentVolumeSource: v1.PersistentVolumeSource{GCEPersistentDisk: &v1.GCEPersistentDiskVolumeSource{PDName: "fake-device1"}},
 			AccessModes: []v1.PersistentVolumeAccessMode{
 				v1.ReadWriteOnce,
 				v1.ReadOnlyMany,
@@ -933,7 +933,8 @@ func Test_GenerateUnmapDeviceFunc_Plugin_Not_Found(t *testing.T) {
 				false, /* checkNodeCapabilitiesBeforeMount */
 				nil))
 			var mounter mount.Interface
-			deviceToDetach := operationexecutor.AttachedVolume{VolumeSpec: &volume.Spec{}}
+			plugins := volumetesting.NewFakeFileVolumePlugin()
+			deviceToDetach := operationexecutor.AttachedVolume{VolumeSpec: &volume.Spec{}, PluginName: plugins[0].GetPluginName()}
 			err := oex.UnmapDevice(deviceToDetach, asw, mounter)
 			// Assert
 			if assert.Error(t, err) {
@@ -949,7 +950,7 @@ func waitForMount(
 	volumeName v1.UniqueVolumeName,
 	asw cache.ActualStateOfWorld) {
 	err := retryWithExponentialBackOff(
-		time.Duration(5*time.Millisecond),
+		time.Duration(500*time.Millisecond),
 		func() (bool, error) {
 			mountedVolumes := asw.GetMountedVolumes()
 			for _, mountedVolume := range mountedVolumes {
@@ -973,7 +974,7 @@ func waitForDetach(
 	volumeName v1.UniqueVolumeName,
 	asw cache.ActualStateOfWorld) {
 	err := retryWithExponentialBackOff(
-		time.Duration(5*time.Millisecond),
+		time.Duration(500*time.Millisecond),
 		func() (bool, error) {
 			if asw.VolumeExists(volumeName) {
 				return false, nil
@@ -1007,7 +1008,7 @@ func createTestClient() *fake.Clientset {
 				Status: v1.NodeStatus{
 					VolumesAttached: []v1.AttachedVolume{
 						{
-							Name:       "fake-plugin/volume-name",
+							Name:       "fake-plugin/fake-device1",
 							DevicePath: "fake/path",
 						},
 					}},

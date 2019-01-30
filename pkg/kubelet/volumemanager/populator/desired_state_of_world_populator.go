@@ -84,6 +84,7 @@ func NewDesiredStateOfWorldPopulator(
 	podManager pod.Manager,
 	podStatusProvider status.PodStatusProvider,
 	desiredStateOfWorld cache.DesiredStateOfWorld,
+	actualStateOfWorld cache.ActualStateOfWorld,
 	kubeContainerRuntime kubecontainer.Runtime,
 	keepTerminatedPodVolumes bool) DesiredStateOfWorldPopulator {
 	return &desiredStateOfWorldPopulator{
@@ -93,6 +94,7 @@ func NewDesiredStateOfWorldPopulator(
 		podManager:                podManager,
 		podStatusProvider:         podStatusProvider,
 		desiredStateOfWorld:       desiredStateOfWorld,
+		actualStateOfWorld:        actualStateOfWorld,
 		pods: processedPods{
 			processedPods: make(map[volumetypes.UniquePodName]bool)},
 		kubeContainerRuntime:     kubeContainerRuntime,
@@ -109,6 +111,7 @@ type desiredStateOfWorldPopulator struct {
 	podManager                pod.Manager
 	podStatusProvider         status.PodStatusProvider
 	desiredStateOfWorld       cache.DesiredStateOfWorld
+	actualStateOfWorld        cache.ActualStateOfWorld
 	pods                      processedPods
 	kubeContainerRuntime      kubecontainer.Runtime
 	timeOfLastGetPodStatus    time.Time
@@ -124,6 +127,7 @@ type processedPods struct {
 
 func (dswp *desiredStateOfWorldPopulator) Run(sourcesReady config.SourcesReady, stopCh <-chan struct{}) {
 	// Wait for the completion of a loop that started after sources are all ready, then set hasAddedPods accordingly
+	glog.Infof("Desired state populator starts to run")
 	wait.PollUntil(dswp.loopSleepDuration, func() (bool, error) {
 		done := sourcesReady.AllReady()
 		dswp.populatorLoopFunc()()
@@ -242,7 +246,17 @@ func (dswp *desiredStateOfWorldPopulator) findAndRemoveDeletedPods() {
 			continue
 		}
 
-		glog.V(5).Infof(volumeToMount.GenerateMsgDetailed("Removing volume from desired state", ""))
+		if !dswp.actualStateOfWorld.VolumeExists(volumeToMount.VolumeName) && podExists {
+			glog.V(4).Infof(volumeToMount.GenerateMsgDetailed("Actual state has not yet has this information skip removing volume from desired state", ""))
+			continue
+		}
+
+		if !dswp.actualStateOfWorld.IsVolumeBindMounted(volumeToMount.VolumeName,
+			volumetypes.UniquePodName(volumeToMount.Pod.UID)) && podExists {
+			glog.V(4).Infof(volumeToMount.GenerateMsgDetailed("Actual state has not yet has the volume mount information skip removing volume from desired state", ""))
+			continue
+		}
+		glog.V(4).Infof(volumeToMount.GenerateMsgDetailed("Removing volume from desired state", ""))
 
 		dswp.desiredStateOfWorld.DeletePodFromVolume(
 			volumeToMount.PodName, volumeToMount.VolumeName)
@@ -302,6 +316,9 @@ func (dswp *desiredStateOfWorldPopulator) processPodVolumes(pod *v1.Pod) {
 	// some of the volume additions may have failed, should not mark this pod as fully processed
 	if allVolumesAdded {
 		dswp.markPodProcessed(uniquePodName)
+		// New pod has been synced. Re-mount all volumes that need it
+		// (e.g. DownwardAPI)
+		dswp.actualStateOfWorld.MarkRemountRequired(uniquePodName)
 	}
 
 }

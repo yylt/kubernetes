@@ -98,6 +98,13 @@ type DesiredStateOfWorld interface {
 	// with pod's unique name. This map can be used to determine which pod is currently
 	// in desired state of world.
 	GetPods() map[types.UniquePodName]bool
+
+	// VolumeExistsWithSpecName returns true if the given volume specified with the
+	// volume spec name (a.k.a., InnerVolumeSpecName) exists in the list of
+	// volumes that should be attached to this node.
+	// If a pod with the same name does not exist under the specified
+	// volume, false is returned.
+	VolumeExistsWithSpecName(podName types.UniquePodName, volumeSpecName string) bool
 }
 
 // VolumeToMount represents a volume that is attached to this node and needs to
@@ -164,7 +171,7 @@ type podToMount struct {
 	// generate the volume plugin object, and passed to plugin methods.
 	// For non-PVC volumes this is the same as defined in the pod object. For
 	// PVC volumes it is from the dereferenced PV object.
-	spec *volume.Spec
+	volumeSpec *volume.Spec
 
 	// outerVolumeSpecName is the volume.Spec.Name() of the volume as referenced
 	// directly in the pod. If the volume was referenced through a persistent
@@ -231,10 +238,9 @@ func (dsw *desiredStateOfWorld) AddPodToVolume(
 	dsw.volumesToMount[volumeName].podsToMount[podName] = podToMount{
 		podName:             podName,
 		pod:                 pod,
-		spec:                volumeSpec,
+		volumeSpec:          volumeSpec,
 		outerVolumeSpecName: outerVolumeSpecName,
 	}
-
 	return volumeName, nil
 }
 
@@ -303,6 +309,19 @@ func (dsw *desiredStateOfWorld) PodExistsInVolume(
 	return podExists
 }
 
+func (dsw *desiredStateOfWorld) VolumeExistsWithSpecName(podName types.UniquePodName, volumeSpecName string) bool {
+	dsw.RLock()
+	defer dsw.RUnlock()
+	for _, volumeObj := range dsw.volumesToMount {
+		for name, podObj := range volumeObj.podsToMount {
+			if podName == name && podObj.volumeSpec.Name() == volumeSpecName {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (dsw *desiredStateOfWorld) GetPods() map[types.UniquePodName]bool {
 	dsw.RLock()
 	defer dsw.RUnlock()
@@ -332,7 +351,7 @@ func (dsw *desiredStateOfWorld) GetVolumesToMount() []VolumeToMount {
 						VolumeName:          volumeName,
 						PodName:             podName,
 						Pod:                 podObj.pod,
-						VolumeSpec:          podObj.spec,
+						VolumeSpec:          podObj.volumeSpec,
 						PluginIsAttachable:  volumeObj.pluginIsAttachable,
 						OuterVolumeSpecName: podObj.outerVolumeSpecName,
 						VolumeGidValue:      volumeObj.volumeGidValue,
