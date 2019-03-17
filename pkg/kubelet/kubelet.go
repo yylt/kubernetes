@@ -421,6 +421,7 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 		MinAge:               kubeCfg.ImageMinimumGCAge.Duration,
 		HighThresholdPercent: int(kubeCfg.ImageGCHighThresholdPercent),
 		LowThresholdPercent:  int(kubeCfg.ImageGCLowThresholdPercent),
+		ImageGCWhitelist:     kubeCfg.ImageGCWhitelist,
 	}
 
 	enforceNodeAllocatable := kubeCfg.EnforceNodeAllocatable
