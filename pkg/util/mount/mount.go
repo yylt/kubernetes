@@ -380,3 +380,22 @@ func HasMountRefs(mountPath string, mountRefs []string) bool {
 	}
 	return count > 0
 }
+
+// PathWithinBase checks if give path is within given base directory.
+func PathWithinBase(fullPath, basePath string) bool {
+	rel, err := filepath.Rel(basePath, fullPath)
+	if err != nil {
+		return false
+	}
+	if StartsWithBackstep(rel) {
+		// Needed to escape the base path.
+		return false
+	}
+	return true
+}
+
+// StartsWithBackstep checks if the given path starts with a backstep segment.
+func StartsWithBackstep(rel string) bool {
+	// normalize to / and check for ../
+	return rel == ".." || strings.HasPrefix(filepath.ToSlash(rel), "../")
+}

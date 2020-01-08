@@ -37,6 +37,8 @@ import (
 )
 
 const (
+	// At least number of fields per line in /proc/<pid>/mountinfo.
+	expectedAtLeastNumFieldsPerMountInfo = 10
 	// How many times to retry for a consistent read of /proc/mounts.
 	maxListTries = 3
 	// Number of fields per line in /proc/mounts as per the fstab man page.
@@ -57,6 +59,30 @@ const (
 	// flags for getting file descriptor without following the symlink
 	openFDFlags = unix.O_NOFOLLOW | unix.O_PATH
 )
+
+// MountInfo represents a single line in /proc/<pid>/mountinfo.
+type MountInfo struct {
+	// Unique ID for the mount (maybe reused after umount).
+	ID int
+	// The ID of the parent mount (or of self for the root of this mount namespace's mount tree).
+	ParentID int
+	// The value of `st_dev` for files on this filesystem.
+	MajorMinor string
+	// The pathname of the directory in the filesystem which forms the root of this mount.
+	Root string
+	// Mount source, filesystem-specific information. e.g. device, tmpfs name.
+	Source string
+	// Mount point, the pathname of the mount point.
+	MountPoint string
+	// Optional fieds, zero or more fields of the form "tag[:value]".
+	OptionalFields []string
+	// The filesystem type in the form "type[.subtype]".
+	FsType string
+	// Per-mount options.
+	MountOptions []string
+	// Per-superblock options.
+	SuperOptions []string
+}
 
 // Mounter provides the default implementation of mount.Interface
 // for the linux platform.  This implementation assumes that the
@@ -662,6 +688,90 @@ func (mounter *Mounter) PrepareSafeSubpath(subPath Subpath) (newHostPath string,
 	return newHostPath, cleanupAction, err
 }
 
+// ParseMountInfo parses /proc/xxx/mountinfo.
+func ParseMountInfo(filename string) ([]MountInfo, error) {
+	content, err := utilio.ConsistentRead(filename, maxListTries)
+	if err != nil {
+		return []MountInfo{}, err
+	}
+	contentStr := string(content)
+	infos := []MountInfo{}
+
+	for _, line := range strings.Split(contentStr, "\n") {
+		if line == "" {
+			// the last split() item is empty string following the last \n
+			continue
+		}
+		// See `man proc` for authoritative description of format of the file.
+		fields := strings.Fields(line)
+		if len(fields) < expectedAtLeastNumFieldsPerMountInfo {
+			return nil, fmt.Errorf("wrong number of fields in (expected at least %d, got %d): %s", expectedAtLeastNumFieldsPerMountInfo, len(fields), line)
+		}
+		id, err := strconv.Atoi(fields[0])
+		if err != nil {
+			return nil, err
+		}
+		parentID, err := strconv.Atoi(fields[1])
+		if err != nil {
+			return nil, err
+		}
+		info := MountInfo{
+			ID:           id,
+			ParentID:     parentID,
+			MajorMinor:   fields[2],
+			Root:         fields[3],
+			MountPoint:   fields[4],
+			MountOptions: strings.Split(fields[5], ","),
+		}
+		// All fields until "-" are "optional fields".
+		i := 6
+		for ; i < len(fields) && fields[i] != "-"; i++ {
+			info.OptionalFields = append(info.OptionalFields, fields[i])
+		}
+		// Parse the rest 3 fields.
+		i++
+		if len(fields)-i < 3 {
+			return nil, fmt.Errorf("expect 3 fields in %s, got %d", line, len(fields)-i)
+		}
+		info.FsType = fields[i]
+		info.Source = fields[i+1]
+		info.SuperOptions = strings.Split(fields[i+2], ",")
+		infos = append(infos, info)
+	}
+	return infos, nil
+}
+
+func findMountInfo(path, mountInfoPath string) (MountInfo, error) {
+	infos, err := ParseMountInfo(mountInfoPath)
+	if err != nil {
+		return MountInfo{}, err
+	}
+
+	// process /proc/xxx/mountinfo in backward order and find the first mount
+	// point that is prefix of 'path' - that's the mount where path resides
+	var info *MountInfo
+	for i := len(infos) - 1; i >= 0; i-- {
+		if PathWithinBase(path, infos[i].MountPoint) {
+			info = &infos[i]
+			break
+		}
+	}
+	if info == nil {
+		return MountInfo{}, fmt.Errorf("cannot find mount point for %q", path)
+	}
+	return *info, nil
+}
+
+func getOsVersion() (version string, err error) {
+	command := exec.Command("uname", "-r")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("Get OS version failed: %v\nOutput: %s\n", err, string(output))
+	}
+	osv := strings.Split(string(output), "-")
+	return osv[0], nil
+}
+
 // This implementation is shared between Linux and NsEnterMounter
 // kubeletPid is PID of kubelet in the PID namespace where bind-mount is done,
 // i.e. pid on the *host* if kubelet runs in a container.
@@ -711,6 +821,28 @@ func doBindSubPath(mounter Interface, subpath Subpath, kubeletPid int) (hostPath
 	if !notMount {
 		// It's already mounted
 		glog.V(5).Infof("Skipping bind-mounting subpath %s: already mounted", bindPathTarget)
+		mntInfo, err := findMountInfo(bindPathTarget, procMountInfoPath)
+		if err != nil {
+			return "", fmt.Errorf("error calling findMountInfo for %s: %s", bindPathTarget, err)
+		}
+		if mntInfo.Root != subpath.Path {
+			// Unmount here is not safe on kernel < 4.18
+			// TODO: Remove this thicky method if better solution is found
+			osVersion, err := getOsVersion()
+			if err != nil {
+				return "", fmt.Errorf("error checking os version for umounting %s: %s", bindPathTarget, err)
+			}
+			if strings.Compare(osVersion, "4.18.0") >= 0 {
+				// It's already mounted but not what we want, unmount it
+				err = mounter.Unmount(bindPathTarget)
+				if err != nil {
+					return "", fmt.Errorf("error ummounting %s: %s", bindPathTarget, err)
+				}
+			}
+		} else {
+			glog.V(5).Infof("Skipping bind-mounting subpath %s: already mounted", bindPathTarget)
+			return bindPathTarget, nil
+		}
 		success = true
 		return bindPathTarget, nil
 	}
