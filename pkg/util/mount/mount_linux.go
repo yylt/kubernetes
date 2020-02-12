@@ -762,16 +762,6 @@ func findMountInfo(path, mountInfoPath string) (MountInfo, error) {
 	return *info, nil
 }
 
-func getOsVersion() (version string, err error) {
-	command := exec.Command("uname", "-r")
-	output, err := command.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("Get OS version failed: %v\nOutput: %s\n", err, string(output))
-	}
-	osv := strings.Split(string(output), "-")
-	return osv[0], nil
-}
-
 // This implementation is shared between Linux and NsEnterMounter
 // kubeletPid is PID of kubelet in the PID namespace where bind-mount is done,
 // i.e. pid on the *host* if kubelet runs in a container.
@@ -825,26 +815,17 @@ func doBindSubPath(mounter Interface, subpath Subpath, kubeletPid int) (hostPath
 		if err != nil {
 			return "", fmt.Errorf("error calling findMountInfo for %s: %s", bindPathTarget, err)
 		}
-		if mntInfo.Root != subpath.Path {
-			// Unmount here is not safe on kernel < 4.18
-			// TODO: Remove this thicky method if better solution is found
-			osVersion, err := getOsVersion()
+		if mntInfo.Root != evalSubPath {
+			// It's already mounted but not what we want, unmount it
+			err = mounter.Unmount(bindPathTarget)
 			if err != nil {
-				return "", fmt.Errorf("error checking os version for umounting %s: %s", bindPathTarget, err)
-			}
-			if strings.Compare(osVersion, "4.18.0") >= 0 {
-				// It's already mounted but not what we want, unmount it
-				err = mounter.Unmount(bindPathTarget)
-				if err != nil {
-					return "", fmt.Errorf("error ummounting %s: %s", bindPathTarget, err)
-				}
+				return "", fmt.Errorf("error ummounting %s: %s", bindPathTarget, err)
 			}
 		} else {
 			glog.V(5).Infof("Skipping bind-mounting subpath %s: already mounted", bindPathTarget)
+			success = true
 			return bindPathTarget, nil
 		}
-		success = true
-		return bindPathTarget, nil
 	}
 
 	// Create target of the bind mount. A directory for directories, empty file
