@@ -278,6 +278,14 @@ func startAttachDetachController(ctx ControllerContext) (http.Handler, bool, err
 		return nil, true, fmt.Errorf("duration time must be greater than one second as set via command line option reconcile-sync-loop-period")
 	}
 
+        timeConfig := attachdetach.DefaultTimerConfig
+        optionMaxWaitForUnmountDuration := ctx.ComponentConfig.AttachDetachController.ReconcilerMaxWaitForUnmountDuration.Duration
+        if optionMaxWaitForUnmountDuration != 0 {
+                if optionMaxWaitForUnmountDuration < time.Minute {
+                        return nil, true, fmt.Errorf("MaxWaitForUnmountDuration must be greater than one minute as set via command line option attach-detach-reconcile-max-wait-unmount-duration.")
+                }
+                timeConfig.ReconcilerMaxWaitForUnmountDuration = optionMaxWaitForUnmountDuration
+        }
 	attachDetachController, attachDetachControllerErr :=
 		attachdetach.NewAttachDetachController(
 			ctx.ClientBuilder.ClientOrDie("attachdetach-controller"),
@@ -292,7 +300,7 @@ func startAttachDetachController(ctx ControllerContext) (http.Handler, bool, err
 			GetDynamicPluginProber(ctx.ComponentConfig.PersistentVolumeBinderController.VolumeConfiguration),
 			ctx.ComponentConfig.AttachDetachController.DisableAttachDetachReconcilerSync,
 			ctx.ComponentConfig.AttachDetachController.ReconcilerSyncLoopPeriod.Duration,
-			attachdetach.DefaultTimerConfig,
+			timeConfig,
 		)
 	if attachDetachControllerErr != nil {
 		return nil, true, fmt.Errorf("failed to start attach/detach controller: %v", attachDetachControllerErr)

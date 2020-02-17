@@ -71,6 +71,7 @@ func RegisterConversions(s *runtime.Scheme) error {
 func autoConvert_v1alpha1_AttachDetachControllerConfiguration_To_config_AttachDetachControllerConfiguration(in *v1alpha1.AttachDetachControllerConfiguration, out *config.AttachDetachControllerConfiguration, s conversion.Scope) error {
 	out.DisableAttachDetachReconcilerSync = in.DisableAttachDetachReconcilerSync
 	out.ReconcilerSyncLoopPeriod = in.ReconcilerSyncLoopPeriod
+	// WARNING: in.ReconcilerMaxWaitForUnmountDuration requires manual conversion: does not exist in peer-type
 	return nil
 }
 
