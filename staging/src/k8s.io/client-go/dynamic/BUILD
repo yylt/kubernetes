@@ -40,8 +40,6 @@ go_library(
         "//staging/src/k8s.io/apimachinery/pkg/runtime/schema:go_default_library",
         "//staging/src/k8s.io/apimachinery/pkg/runtime/serializer:go_default_library",
         "//staging/src/k8s.io/apimachinery/pkg/runtime/serializer/json:go_default_library",
-        "//staging/src/k8s.io/apimachinery/pkg/runtime/serializer/streaming:go_default_library",
-        "//staging/src/k8s.io/apimachinery/pkg/runtime/serializer/versioning:go_default_library",
         "//staging/src/k8s.io/apimachinery/pkg/types:go_default_library",
         "//staging/src/k8s.io/apimachinery/pkg/watch:go_default_library",
         "//staging/src/k8s.io/client-go/rest:go_default_library",
@@ -59,6 +57,8 @@ filegroup(
     name = "all-srcs",
     srcs = [
         ":package-srcs",
+        "//staging/src/k8s.io/client-go/dynamic/dynamicinformer:all-srcs",
+        "//staging/src/k8s.io/client-go/dynamic/dynamiclister:all-srcs",
         "//staging/src/k8s.io/client-go/dynamic/fake:all-srcs",
     ],
     tags = ["automanaged"],

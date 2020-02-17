@@ -17,6 +17,7 @@ limitations under the License.
 package webhook
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -36,7 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd/api/v1"
+	v1 "k8s.io/client-go/tools/clientcmd/api/v1"
 )
 
 const (
@@ -49,7 +50,7 @@ const (
 var (
 	defaultCluster = v1.NamedCluster{
 		Cluster: v1.Cluster{
-			Server: "https://webhook.example.com",
+			Server:                   "https://webhook.example.com",
 			CertificateAuthorityData: caCert,
 		},
 	}
@@ -61,7 +62,7 @@ var (
 	}
 	namedCluster = v1.NamedCluster{
 		Cluster: v1.Cluster{
-			Server: "https://webhook.example.com",
+			Server:                   "https://webhook.example.com",
 			CertificateAuthorityData: caCert,
 		},
 		Name: "test-cluster",
@@ -159,7 +160,7 @@ func TestKubeConfigFile(t *testing.T) {
 			test: "cluster with invalid CA certificate ",
 			cluster: &v1.NamedCluster{
 				Cluster: v1.Cluster{
-					Server: namedCluster.Cluster.Server,
+					Server:                   namedCluster.Cluster.Server,
 					CertificateAuthorityData: caKey,
 				},
 			},
@@ -371,7 +372,7 @@ func TestTLSConfig(t *testing.T) {
 				Clusters: []v1.NamedCluster{
 					{
 						Cluster: v1.Cluster{
-							Server: server.URL,
+							Server:                   server.URL,
 							CertificateAuthorityData: tt.clientCA,
 						},
 					},
@@ -396,7 +397,7 @@ func TestTLSConfig(t *testing.T) {
 			wh, err := NewGenericWebhook(runtime.NewScheme(), scheme.Codecs, configFile, groupVersions, retryBackoff)
 
 			if err == nil {
-				err = wh.RestClient.Get().Do().Error()
+				err = wh.RestClient.Get().Do(context.TODO()).Error()
 			}
 
 			if err == nil {
@@ -436,7 +437,7 @@ func TestRequestTimeout(t *testing.T) {
 		Clusters: []v1.NamedCluster{
 			{
 				Cluster: v1.Cluster{
-					Server: server.URL,
+					Server:                   server.URL,
 					CertificateAuthorityData: caCert,
 				},
 			},
@@ -465,7 +466,7 @@ func TestRequestTimeout(t *testing.T) {
 
 	resultCh := make(chan rest.Result)
 
-	go func() { resultCh <- wh.RestClient.Get().Do() }()
+	go func() { resultCh <- wh.RestClient.Get().Do(context.TODO()) }()
 	select {
 	case <-time.After(time.Second * 5):
 		t.Errorf("expected request to timeout after %s", requestTimeout)
@@ -522,7 +523,7 @@ func TestWithExponentialBackoff(t *testing.T) {
 		Clusters: []v1.NamedCluster{
 			{
 				Cluster: v1.Cluster{
-					Server: server.URL,
+					Server:                   server.URL,
 					CertificateAuthorityData: caCert,
 				},
 			},
@@ -550,8 +551,8 @@ func TestWithExponentialBackoff(t *testing.T) {
 		t.Fatalf("failed to create the webhook: %v", err)
 	}
 
-	result := wh.WithExponentialBackoff(func() rest.Result {
-		return wh.RestClient.Get().Do()
+	result := wh.WithExponentialBackoff(context.Background(), func() rest.Result {
+		return wh.RestClient.Get().Do(context.TODO())
 	})
 
 	var statusCode int
@@ -562,8 +563,8 @@ func TestWithExponentialBackoff(t *testing.T) {
 		t.Errorf("unexpected status code: %d", statusCode)
 	}
 
-	result = wh.WithExponentialBackoff(func() rest.Result {
-		return wh.RestClient.Get().Do()
+	result = wh.WithExponentialBackoff(context.Background(), func() rest.Result {
+		return wh.RestClient.Get().Do(context.TODO())
 	})
 
 	result.StatusCode(&statusCode)

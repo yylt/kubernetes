@@ -19,12 +19,10 @@ package dockershim
 import (
 	"fmt"
 	"strconv"
-	"strings"
 
-	"github.com/blang/semver"
 	dockercontainer "github.com/docker/docker/api/types/container"
 
-	runtimeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/runtime/v1alpha2"
+	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
 	knetwork "k8s.io/kubernetes/pkg/kubelet/dockershim/network"
 )
 
@@ -90,7 +88,7 @@ func modifyContainerConfig(sc *runtimeapi.LinuxContainerSecurityContext, config 
 	user := config.User
 	if sc.RunAsGroup != nil {
 		if user == "" {
-			return fmt.Errorf("runAsGroup is specified without a runAsUser.")
+			return fmt.Errorf("runAsGroup is specified without a runAsUser")
 		}
 		user = fmt.Sprintf("%s:%d", config.User, sc.GetRunAsGroup().Value)
 	}
@@ -135,6 +133,11 @@ func modifyHostConfig(sc *runtimeapi.LinuxContainerSecurityContext, hostConfig *
 
 	if sc.NoNewPrivs {
 		hostConfig.SecurityOpt = append(hostConfig.SecurityOpt, "no-new-privileges")
+	}
+
+	if !hostConfig.Privileged {
+		hostConfig.MaskedPaths = sc.MaskedPaths
+		hostConfig.ReadonlyPaths = sc.ReadonlyPaths
 	}
 
 	return nil
@@ -197,16 +200,5 @@ func modifyHostOptionsForContainer(nsOpts *runtimeapi.NamespaceOption, podSandbo
 
 	if nsOpts.GetNetwork() == runtimeapi.NamespaceMode_NODE {
 		hc.UTSMode = namespaceModeHost
-	}
-}
-
-// modifyPIDNamespaceOverrides implements a temporary override for the default PID namespace sharing for Docker:
-//     1. Docker engine prior to API Version 1.24 doesn't support attaching to another container's
-//        PID namespace, and it didn't stabilize until 1.26. This check can be removed when Kubernetes'
-//        minimum Docker version is at least 1.13.1 (API version 1.26).
-// TODO(verb): remove entirely once these two conditions are satisfied
-func modifyContainerPIDNamespaceOverrides(version *semver.Version, hc *dockercontainer.HostConfig, podSandboxID string) {
-	if version.LT(semver.Version{Major: 1, Minor: 26}) && strings.HasPrefix(string(hc.PidMode), "container:") {
-		hc.PidMode = ""
 	}
 }

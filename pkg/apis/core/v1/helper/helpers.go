@@ -21,7 +21,7 @@ import (
 	"fmt"
 	"strings"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
@@ -85,6 +85,24 @@ func HugePageSizeFromResourceName(name v1.ResourceName) (resource.Quantity, erro
 	return resource.ParseQuantity(pageSize)
 }
 
+// HugePageUnitSizeFromByteSize returns hugepage size has the format.
+// `size` must be guaranteed to divisible into the largest units that can be expressed.
+// <size><unit-prefix>B (1024 = "1KB", 1048576 = "1MB", etc).
+func HugePageUnitSizeFromByteSize(size int64) (string, error) {
+	// hugePageSizeUnitList is borrowed from opencontainers/runc/libcontainer/cgroups/utils.go
+	var hugePageSizeUnitList = []string{"B", "KB", "MB", "GB", "TB", "PB"}
+	idx := 0
+	len := len(hugePageSizeUnitList) - 1
+	for size%1024 == 0 && idx < len {
+		size /= 1024
+		idx++
+	}
+	if size > 1024 && idx < len {
+		return "", fmt.Errorf("size: %d%s must be guaranteed to divisible into the largest units", size, hugePageSizeUnitList[idx])
+	}
+	return fmt.Sprintf("%d%s", size, hugePageSizeUnitList[idx]), nil
+}
+
 // IsOvercommitAllowed returns true if the resource is in the default
 // namespace and is not hugepages.
 func IsOvercommitAllowed(name v1.ResourceName) bool {
@@ -106,23 +124,6 @@ func IsScalarResourceName(name v1.ResourceName) bool {
 // the objective is not to perform validation here
 func IsServiceIPSet(service *v1.Service) bool {
 	return service.Spec.ClusterIP != v1.ClusterIPNone && service.Spec.ClusterIP != ""
-}
-
-// AddToNodeAddresses appends the NodeAddresses to the passed-by-pointer slice,
-// only if they do not already exist
-func AddToNodeAddresses(addresses *[]v1.NodeAddress, addAddresses ...v1.NodeAddress) {
-	for _, add := range addAddresses {
-		exists := false
-		for _, existing := range *addresses {
-			if existing.Address == add.Address && existing.Type == add.Type {
-				exists = true
-				break
-			}
-		}
-		if !exists {
-			*addresses = append(*addresses, add)
-		}
-	}
 }
 
 // TODO: make method on LoadBalancerStatus?
@@ -150,16 +151,6 @@ func ingressEqual(lhs, rhs *v1.LoadBalancerIngress) bool {
 		return false
 	}
 	return true
-}
-
-// TODO: make method on LoadBalancerStatus?
-func LoadBalancerStatusDeepCopy(lb *v1.LoadBalancerStatus) *v1.LoadBalancerStatus {
-	c := &v1.LoadBalancerStatus{}
-	c.Ingress = make([]v1.LoadBalancerIngress, len(lb.Ingress))
-	for i := range lb.Ingress {
-		c.Ingress[i] = lb.Ingress[i]
-	}
-	return c
 }
 
 // GetAccessModesAsString returns a string representation of an array of access modes.
@@ -422,22 +413,37 @@ type taintsFilterFunc func(*v1.Taint) bool
 
 // TolerationsTolerateTaintsWithFilter checks if given tolerations tolerates
 // all the taints that apply to the filter in given taint list.
+// DEPRECATED: Please use FindMatchingUntoleratedTaint instead.
 func TolerationsTolerateTaintsWithFilter(tolerations []v1.Toleration, taints []v1.Taint, applyFilter taintsFilterFunc) bool {
-	if len(taints) == 0 {
-		return true
-	}
+	_, isUntolerated := FindMatchingUntoleratedTaint(taints, tolerations, applyFilter)
+	return !isUntolerated
+}
 
-	for i := range taints {
-		if applyFilter != nil && !applyFilter(&taints[i]) {
+// FindMatchingUntoleratedTaint checks if the given tolerations tolerates
+// all the filtered taints, and returns the first taint without a toleration
+func FindMatchingUntoleratedTaint(taints []v1.Taint, tolerations []v1.Toleration, inclusionFilter taintsFilterFunc) (v1.Taint, bool) {
+	filteredTaints := getFilteredTaints(taints, inclusionFilter)
+	for _, taint := range filteredTaints {
+		if !TolerationsTolerateTaint(tolerations, &taint) {
+			return taint, true
+		}
+	}
+	return v1.Taint{}, false
+}
+
+// getFilteredTaints returns a list of taints satisfying the filter predicate
+func getFilteredTaints(taints []v1.Taint, inclusionFilter taintsFilterFunc) []v1.Taint {
+	if inclusionFilter == nil {
+		return taints
+	}
+	filteredTaints := []v1.Taint{}
+	for _, taint := range taints {
+		if !inclusionFilter(&taint) {
 			continue
 		}
-
-		if !TolerationsTolerateTaint(tolerations, &taints[i]) {
-			return false
-		}
+		filteredTaints = append(filteredTaints, taint)
 	}
-
-	return true
+	return filteredTaints
 }
 
 // Returns true and list of Tolerations matching all Taints if all are tolerated, or false otherwise.
@@ -499,4 +505,29 @@ func GetPersistentVolumeClaimClass(claim *v1.PersistentVolumeClaim) string {
 	}
 
 	return ""
+}
+
+// ScopedResourceSelectorRequirementsAsSelector converts the ScopedResourceSelectorRequirement api type into a struct that implements
+// labels.Selector.
+func ScopedResourceSelectorRequirementsAsSelector(ssr v1.ScopedResourceSelectorRequirement) (labels.Selector, error) {
+	selector := labels.NewSelector()
+	var op selection.Operator
+	switch ssr.Operator {
+	case v1.ScopeSelectorOpIn:
+		op = selection.In
+	case v1.ScopeSelectorOpNotIn:
+		op = selection.NotIn
+	case v1.ScopeSelectorOpExists:
+		op = selection.Exists
+	case v1.ScopeSelectorOpDoesNotExist:
+		op = selection.DoesNotExist
+	default:
+		return nil, fmt.Errorf("%q is not a valid scope selector operator", ssr.Operator)
+	}
+	r, err := labels.NewRequirement(string(ssr.ScopeName), op, ssr.Values)
+	if err != nil {
+		return nil, err
+	}
+	selector = selector.Add(*r)
+	return selector, nil
 }

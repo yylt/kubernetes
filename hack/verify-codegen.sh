@@ -14,11 +14,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# This script verifies whether code update is needed or not against the
+# specific sub-projects. The sub-projects are listed below this script(the
+# line that starts with `CODEGEN_PKG`).
+# Usage: `hack/verify-codegen.sh`.
+
 set -o errexit
 set -o nounset
 set -o pipefail
 
-KUBE_ROOT=$(dirname "${BASH_SOURCE}")/..
+KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 source "${KUBE_ROOT}/hack/lib/init.sh"
 
 kube::golang::setup_env

@@ -17,142 +17,177 @@ limitations under the License.
 package upgrade
 
 import (
-	"fmt"
-	"io/ioutil"
 	"os"
-	"path/filepath"
 
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	flag "github.com/spf13/pflag"
 
+	clientset "k8s.io/client-go/kubernetes"
+	kubeadmapi "k8s.io/kubernetes/cmd/kubeadm/app/apis/kubeadm"
 	"k8s.io/kubernetes/cmd/kubeadm/app/cmd/options"
-	cmdutil "k8s.io/kubernetes/cmd/kubeadm/app/cmd/util"
+	phases "k8s.io/kubernetes/cmd/kubeadm/app/cmd/phases/upgrade/node"
+	"k8s.io/kubernetes/cmd/kubeadm/app/cmd/phases/workflow"
 	"k8s.io/kubernetes/cmd/kubeadm/app/constants"
-	kubeletphase "k8s.io/kubernetes/cmd/kubeadm/app/phases/kubelet"
-	kubeadmutil "k8s.io/kubernetes/cmd/kubeadm/app/util"
-	dryrunutil "k8s.io/kubernetes/cmd/kubeadm/app/util/dryrun"
-	"k8s.io/kubernetes/pkg/util/normalizer"
-	"k8s.io/kubernetes/pkg/util/version"
+	configutil "k8s.io/kubernetes/cmd/kubeadm/app/util/config"
 )
 
-var (
-	upgradeNodeConfigLongDesc = normalizer.LongDesc(`
-		Downloads the kubelet configuration from a ConfigMap of the form "kubelet-config-1.X" in the cluster,
-		where X is the minor version of the kubelet. kubeadm uses the --kubelet-version parameter to determine
-		what the _desired_ kubelet version is. Give 
-		`)
+// nodeOptions defines all the options exposed via flags by kubeadm upgrade node.
+// Please note that this structure includes the public kubeadm config API, but only a subset of the options
+// supported by this api will be exposed as a flag.
+type nodeOptions struct {
+	kubeConfigPath string
+	kubeletVersion string
+	etcdUpgrade    bool
+	renewCerts     bool
+	dryRun         bool
+	kustomizeDir   string
+}
 
-	upgradeNodeConfigExample = normalizer.Examples(`
-		# Downloads the kubelet configuration from the ConfigMap in the cluster. Uses a specific desired kubelet version.
-		kubeadm upgrade node config --kubelet-version v1.11.0
+// compile-time assert that the local data object satisfies the phases data interface.
+var _ phases.Data = &nodeData{}
 
-		# Simulates the downloading of the kubelet configuration from the ConfigMap in the cluster with a specific desired
-		# version. Does not change any state locally on the node.
-		kubeadm upgrade node config --kubelet-version v1.11.0 --dry-run
-		`)
-)
-
-type nodeUpgradeFlags struct {
-	kubeConfigPath    string
-	kubeletVersionStr string
-	dryRun            bool
+// nodeData defines all the runtime information used when running the kubeadm upgrade node worklow;
+// this data is shared across all the phases that are included in the workflow.
+type nodeData struct {
+	etcdUpgrade        bool
+	renewCerts         bool
+	dryRun             bool
+	kubeletVersion     string
+	cfg                *kubeadmapi.InitConfiguration
+	isControlPlaneNode bool
+	client             clientset.Interface
+	kustomizeDir       string
 }
 
 // NewCmdNode returns the cobra command for `kubeadm upgrade node`
 func NewCmdNode() *cobra.Command {
+	nodeOptions := newNodeOptions()
+	nodeRunner := workflow.NewRunner()
+
 	cmd := &cobra.Command{
 		Use:   "node",
-		Short: "Upgrade commands for a node in the cluster. Currently only supports upgrading the configuration, not the kubelet itself.",
-		RunE:  cmdutil.SubCmdRunE("node"),
-	}
-	cmd.AddCommand(NewCmdUpgradeNodeConfig())
-	return cmd
-}
-
-// NewCmdUpgradeNodeConfig returns the cobra.Command for downloading the new/upgrading the kubelet configuration from the kubelet-config-1.X
-// ConfigMap in the cluster
-func NewCmdUpgradeNodeConfig() *cobra.Command {
-	flags := &nodeUpgradeFlags{
-		kubeConfigPath:    constants.GetKubeletKubeConfigPath(),
-		kubeletVersionStr: "",
-		dryRun:            false,
-	}
-
-	cmd := &cobra.Command{
-		Use:     "config",
-		Short:   "Downloads the kubelet configuration from the cluster ConfigMap kubelet-config-1.X, where X is the minor version of the kubelet.",
-		Long:    upgradeNodeConfigLongDesc,
-		Example: upgradeNodeConfigExample,
-		Run: func(cmd *cobra.Command, args []string) {
-			err := RunUpgradeNodeConfig(flags)
-			kubeadmutil.CheckErr(err)
+		Short: "Upgrade commands for a node in the cluster",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return nodeRunner.Run(args)
 		},
+		Args: cobra.NoArgs,
 	}
 
-	options.AddKubeConfigFlag(cmd.Flags(), &flags.kubeConfigPath)
-	cmd.Flags().BoolVar(&flags.dryRun, "dry-run", flags.dryRun, "Do not change any state, just output the actions that would be performed.")
-	cmd.Flags().StringVar(&flags.kubeletVersionStr, "kubelet-version", flags.kubeletVersionStr, "The *desired* version for the kubelet after the upgrade.")
+	// adds flags to the node command
+	// flags could be eventually inherited by the sub-commands automatically generated for phases
+	addUpgradeNodeFlags(cmd.Flags(), nodeOptions)
+	options.AddKustomizePodsFlag(cmd.Flags(), &nodeOptions.kustomizeDir)
+
+	// initialize the workflow runner with the list of phases
+	nodeRunner.AppendPhase(phases.NewControlPlane())
+	nodeRunner.AppendPhase(phases.NewKubeletConfigPhase())
+
+	// sets the data builder function, that will be used by the runner
+	// both when running the entire workflow or single phases
+	nodeRunner.SetDataInitializer(func(cmd *cobra.Command, args []string) (workflow.RunData, error) {
+		return newNodeData(cmd, args, nodeOptions)
+	})
+
+	// binds the Runner to kubeadm upgrade node command by altering
+	// command help, adding --skip-phases flag and by adding phases subcommands
+	nodeRunner.BindToCommand(cmd)
+
 	return cmd
 }
 
-// RunUpgradeNodeConfig is executed when `kubeadm upgrade node config` runs.
-func RunUpgradeNodeConfig(flags *nodeUpgradeFlags) error {
-	if len(flags.kubeletVersionStr) == 0 {
-		return fmt.Errorf("The --kubelet-version argument is required")
+// newNodeOptions returns a struct ready for being used for creating cmd kubeadm upgrade node flags.
+func newNodeOptions() *nodeOptions {
+	return &nodeOptions{
+		kubeConfigPath: constants.GetKubeletKubeConfigPath(),
+		dryRun:         false,
+		renewCerts:     true,
+		etcdUpgrade:    true,
 	}
-
-	// Set up the kubelet directory to use. If dry-running, use a fake directory
-	kubeletDir, err := getKubeletDir(flags.dryRun)
-	if err != nil {
-		return err
-	}
-
-	client, err := getClient(flags.kubeConfigPath, flags.dryRun)
-	if err != nil {
-		return fmt.Errorf("couldn't create a Kubernetes client from file %q: %v", flags.kubeConfigPath, err)
-	}
-
-	// Parse the desired kubelet version
-	kubeletVersion, err := version.ParseSemantic(flags.kubeletVersionStr)
-	if err != nil {
-		return err
-	}
-	// TODO: Checkpoint the current configuration first so that if something goes wrong it can be recovered
-	if err := kubeletphase.DownloadConfig(client, kubeletVersion, kubeletDir); err != nil {
-		return err
-	}
-
-	// If we're dry-running, print the generated manifests, otherwise do nothing
-	if err := printFilesIfDryRunning(flags.dryRun, kubeletDir); err != nil {
-		return fmt.Errorf("error printing files on dryrun: %v", err)
-	}
-
-	fmt.Println("[upgrade] The configuration for this node was successfully updated!")
-	fmt.Println("[upgrade] Now you should go ahead and upgrade the kubelet package using your package manager.")
-	return nil
 }
 
-// getKubeletDir gets the kubelet directory based on whether the user is dry-running this command or not.
-func getKubeletDir(dryRun bool) (string, error) {
-	if dryRun {
-		dryRunDir, err := ioutil.TempDir("", "kubeadm-init-dryrun")
-		if err != nil {
-			return "", fmt.Errorf("couldn't create a temporary directory: %v", err)
-		}
-		return dryRunDir, nil
-	}
-	return constants.KubeletRunDirectory, nil
+func addUpgradeNodeFlags(flagSet *flag.FlagSet, nodeOptions *nodeOptions) {
+	options.AddKubeConfigFlag(flagSet, &nodeOptions.kubeConfigPath)
+	flagSet.BoolVar(&nodeOptions.dryRun, options.DryRun, nodeOptions.dryRun, "Do not change any state, just output the actions that would be performed.")
+	flagSet.StringVar(&nodeOptions.kubeletVersion, options.KubeletVersion, nodeOptions.kubeletVersion, "The *desired* version for the kubelet config after the upgrade. If not specified, the KubernetesVersion from the kubeadm-config ConfigMap will be used")
+	flagSet.MarkDeprecated(options.KubeletVersion, "This flag is deprecated and will be removed in a future version.")
+	flagSet.BoolVar(&nodeOptions.renewCerts, options.CertificateRenewal, nodeOptions.renewCerts, "Perform the renewal of certificates used by component changed during upgrades.")
+	flagSet.BoolVar(&nodeOptions.etcdUpgrade, options.EtcdUpgrade, nodeOptions.etcdUpgrade, "Perform the upgrade of etcd.")
 }
 
-// printFilesIfDryRunning prints the Static Pod manifests to stdout and informs about the temporary directory to go and lookup
-func printFilesIfDryRunning(dryRun bool, kubeletDir string) error {
-	if !dryRun {
-		return nil
+// newNodeData returns a new nodeData struct to be used for the execution of the kubeadm upgrade node workflow.
+// This func takes care of validating nodeOptions passed to the command, and then it converts
+// options into the internal InitConfiguration type that is used as input all the phases in the kubeadm upgrade node workflow
+func newNodeData(cmd *cobra.Command, args []string, options *nodeOptions) (*nodeData, error) {
+	client, err := getClient(options.kubeConfigPath, options.dryRun)
+	if err != nil {
+		return nil, errors.Wrapf(err, "couldn't create a Kubernetes client from file %q", options.kubeConfigPath)
 	}
 
-	// Print the contents of the upgraded file and pretend like they were in kubeadmconstants.KubeletRunDirectory
-	fileToPrint := dryrunutil.FileToPrint{
-		RealPath:  filepath.Join(kubeletDir, constants.KubeletConfigurationFileName),
-		PrintPath: filepath.Join(constants.KubeletRunDirectory, constants.KubeletConfigurationFileName),
+	// isControlPlane checks if a node is a control-plane node by looking up
+	// the kube-apiserver manifest file
+	isControlPlaneNode := true
+	filepath := constants.GetStaticPodFilepath(constants.KubeAPIServer, constants.GetStaticPodDirectory())
+	if _, err := os.Stat(filepath); os.IsNotExist(err) {
+		isControlPlaneNode = false
 	}
-	return dryrunutil.PrintDryRunFiles([]dryrunutil.FileToPrint{fileToPrint}, os.Stdout)
+
+	// Fetches the cluster configuration
+	// NB in case of control-plane node, we are reading all the info for the node; in case of NOT control-plane node
+	//    (worker node), we are not reading local API address and the CRI socket from the node object
+	cfg, err := configutil.FetchInitConfigurationFromCluster(client, os.Stdout, "upgrade", !isControlPlaneNode)
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to fetch the kubeadm-config ConfigMap")
+	}
+
+	return &nodeData{
+		etcdUpgrade:        options.etcdUpgrade,
+		renewCerts:         options.renewCerts,
+		dryRun:             options.dryRun,
+		kubeletVersion:     options.kubeletVersion,
+		cfg:                cfg,
+		client:             client,
+		isControlPlaneNode: isControlPlaneNode,
+		kustomizeDir:       options.kustomizeDir,
+	}, nil
+}
+
+// DryRun returns the dryRun flag.
+func (d *nodeData) DryRun() bool {
+	return d.dryRun
+}
+
+// EtcdUpgrade returns the etcdUpgrade flag.
+func (d *nodeData) EtcdUpgrade() bool {
+	return d.etcdUpgrade
+}
+
+// RenewCerts returns the renewCerts flag.
+func (d *nodeData) RenewCerts() bool {
+	return d.renewCerts
+}
+
+// KubeletVersion returns the kubeletVersion flag.
+func (d *nodeData) KubeletVersion() string {
+	return d.kubeletVersion
+}
+
+// Cfg returns initConfiguration.
+func (d *nodeData) Cfg() *kubeadmapi.InitConfiguration {
+	return d.cfg
+}
+
+// IsControlPlaneNode returns the isControlPlaneNode flag.
+func (d *nodeData) IsControlPlaneNode() bool {
+	return d.isControlPlaneNode
+}
+
+// Client returns a Kubernetes client to be used by kubeadm.
+func (d *nodeData) Client() clientset.Interface {
+	return d.client
+}
+
+// KustomizeDir returns the folder where kustomize patches for static pod manifest are stored
+func (d *nodeData) KustomizeDir() string {
+	return d.kustomizeDir
 }

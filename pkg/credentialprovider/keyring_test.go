@@ -21,8 +21,6 @@ import (
 	"fmt"
 	"reflect"
 	"testing"
-
-	dockertypes "github.com/docker/docker/api/types"
 )
 
 func TestUrlsMatch(t *testing.T) {
@@ -195,7 +193,7 @@ func TestDockerKeyringForGlob(t *testing.T) {
 	for i, test := range tests {
 		email := "foo@bar.baz"
 		username := "foo"
-		password := "bar"
+		password := "bar" // Fake value for testing.
 		auth := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", username, password)))
 		sampleDockerConfig := fmt.Sprintf(`{
    "%s": {
@@ -263,7 +261,7 @@ func TestKeyringMiss(t *testing.T) {
 	for _, test := range tests {
 		email := "foo@bar.baz"
 		username := "foo"
-		password := "bar"
+		password := "bar" // Fake value for testing.
 		auth := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", username, password)))
 		sampleDockerConfig := fmt.Sprintf(`{
    "%s": {
@@ -291,7 +289,7 @@ func TestKeyringMissWithDockerHubCredentials(t *testing.T) {
 	url := defaultRegistryKey
 	email := "foo@bar.baz"
 	username := "foo"
-	password := "bar"
+	password := "bar" // Fake value for testing.
 	auth := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", username, password)))
 	sampleDockerConfig := fmt.Sprintf(`{
    "https://%s": {
@@ -317,7 +315,7 @@ func TestKeyringHitWithUnqualifiedDockerHub(t *testing.T) {
 	url := defaultRegistryKey
 	email := "foo@bar.baz"
 	username := "foo"
-	password := "bar"
+	password := "bar" // Fake value for testing.
 	auth := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", username, password)))
 	sampleDockerConfig := fmt.Sprintf(`{
    "https://%s": {
@@ -358,7 +356,7 @@ func TestKeyringHitWithUnqualifiedLibraryDockerHub(t *testing.T) {
 	url := defaultRegistryKey
 	email := "foo@bar.baz"
 	username := "foo"
-	password := "bar"
+	password := "bar" // Fake value for testing.
 	auth := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", username, password)))
 	sampleDockerConfig := fmt.Sprintf(`{
    "https://%s": {
@@ -399,7 +397,7 @@ func TestKeyringHitWithQualifiedDockerHub(t *testing.T) {
 	url := defaultRegistryKey
 	email := "foo@bar.baz"
 	username := "foo"
-	password := "bar"
+	password := "bar" // Fake value for testing.
 	auth := base64.StdEncoding.EncodeToString([]byte(fmt.Sprintf("%s:%s", username, password)))
 	sampleDockerConfig := fmt.Sprintf(`{
    "https://%s": {
@@ -465,22 +463,17 @@ func (d *testProvider) Enabled() bool {
 	return true
 }
 
-// LazyProvide implements dockerConfigProvider. Should never be called.
-func (d *testProvider) LazyProvide() *DockerConfigEntry {
-	return nil
-}
-
 // Provide implements dockerConfigProvider
-func (d *testProvider) Provide() DockerConfig {
-	d.Count += 1
+func (d *testProvider) Provide(image string) DockerConfig {
+	d.Count++
 	return DockerConfig{}
 }
 
-func TestLazyKeyring(t *testing.T) {
+func TestProvidersDockerKeyring(t *testing.T) {
 	provider := &testProvider{
 		Count: 0,
 	}
-	lazy := &lazyDockerKeyring{
+	keyring := &providersDockerKeyring{
 		Providers: []DockerConfigProvider{
 			provider,
 		},
@@ -489,35 +482,31 @@ func TestLazyKeyring(t *testing.T) {
 	if provider.Count != 0 {
 		t.Errorf("Unexpected number of Provide calls: %v", provider.Count)
 	}
-	lazy.Lookup("foo")
+	keyring.Lookup("foo")
 	if provider.Count != 1 {
 		t.Errorf("Unexpected number of Provide calls: %v", provider.Count)
 	}
-	lazy.Lookup("foo")
+	keyring.Lookup("foo")
 	if provider.Count != 2 {
 		t.Errorf("Unexpected number of Provide calls: %v", provider.Count)
 	}
-	lazy.Lookup("foo")
+	keyring.Lookup("foo")
 	if provider.Count != 3 {
 		t.Errorf("Unexpected number of Provide calls: %v", provider.Count)
 	}
 }
 
 func TestDockerKeyringLookup(t *testing.T) {
-	ada := LazyAuthConfiguration{
-		AuthConfig: dockertypes.AuthConfig{
-			Username: "ada",
-			Password: "smash",
-			Email:    "ada@example.com",
-		},
+	ada := AuthConfig{
+		Username: "ada",
+		Password: "smash", // Fake value for testing.
+		Email:    "ada@example.com",
 	}
 
-	grace := LazyAuthConfiguration{
-		AuthConfig: dockertypes.AuthConfig{
-			Username: "grace",
-			Password: "squash",
-			Email:    "grace@example.com",
-		},
+	grace := AuthConfig{
+		Username: "grace",
+		Password: "squash", // Fake value for testing.
+		Email:    "grace@example.com",
 	}
 
 	dk := &BasicDockerKeyring{}
@@ -536,27 +525,27 @@ func TestDockerKeyringLookup(t *testing.T) {
 
 	tests := []struct {
 		image string
-		match []LazyAuthConfiguration
+		match []AuthConfig
 		ok    bool
 	}{
 		// direct match
-		{"bar.example.com", []LazyAuthConfiguration{ada}, true},
+		{"bar.example.com", []AuthConfig{ada}, true},
 
 		// direct match deeper than other possible matches
-		{"bar.example.com/pong", []LazyAuthConfiguration{grace, ada}, true},
+		{"bar.example.com/pong", []AuthConfig{grace, ada}, true},
 
 		// no direct match, deeper path ignored
-		{"bar.example.com/ping", []LazyAuthConfiguration{ada}, true},
+		{"bar.example.com/ping", []AuthConfig{ada}, true},
 
 		// match first part of path token
-		{"bar.example.com/pongz", []LazyAuthConfiguration{grace, ada}, true},
+		{"bar.example.com/pongz", []AuthConfig{grace, ada}, true},
 
 		// match regardless of sub-path
-		{"bar.example.com/pong/pang", []LazyAuthConfiguration{grace, ada}, true},
+		{"bar.example.com/pong/pang", []AuthConfig{grace, ada}, true},
 
 		// no host match
-		{"example.com", []LazyAuthConfiguration{}, false},
-		{"foo.example.com", []LazyAuthConfiguration{}, false},
+		{"example.com", []AuthConfig{}, false},
+		{"foo.example.com", []AuthConfig{}, false},
 	}
 
 	for i, tt := range tests {
@@ -575,12 +564,10 @@ func TestDockerKeyringLookup(t *testing.T) {
 // by images that only match the hostname.
 // NOTE: the above covers the case of a more specific match trumping just hostname.
 func TestIssue3797(t *testing.T) {
-	rex := LazyAuthConfiguration{
-		AuthConfig: dockertypes.AuthConfig{
-			Username: "rex",
-			Password: "tiny arms",
-			Email:    "rex@example.com",
-		},
+	rex := AuthConfig{
+		Username: "rex",
+		Password: "tiny arms", // Fake value for testing.
+		Email:    "rex@example.com",
 	}
 
 	dk := &BasicDockerKeyring{}
@@ -594,15 +581,15 @@ func TestIssue3797(t *testing.T) {
 
 	tests := []struct {
 		image string
-		match []LazyAuthConfiguration
+		match []AuthConfig
 		ok    bool
 	}{
 		// direct match
-		{"quay.io", []LazyAuthConfiguration{rex}, true},
+		{"quay.io", []AuthConfig{rex}, true},
 
 		// partial matches
-		{"quay.io/foo", []LazyAuthConfiguration{rex}, true},
-		{"quay.io/foo/bar", []LazyAuthConfiguration{rex}, true},
+		{"quay.io/foo", []AuthConfig{rex}, true},
+		{"quay.io/foo/bar", []AuthConfig{rex}, true},
 	}
 
 	for i, tt := range tests {

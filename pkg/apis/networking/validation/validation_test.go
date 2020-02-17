@@ -17,18 +17,26 @@ limitations under the License.
 package validation
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	featuregatetesting "k8s.io/component-base/featuregate/testing"
 	api "k8s.io/kubernetes/pkg/apis/core"
 	"k8s.io/kubernetes/pkg/apis/networking"
+	"k8s.io/kubernetes/pkg/features"
 )
 
 func TestValidateNetworkPolicy(t *testing.T) {
 	protocolTCP := api.ProtocolTCP
 	protocolUDP := api.ProtocolUDP
 	protocolICMP := api.Protocol("ICMP")
+	protocolSCTP := api.ProtocolSCTP
+
+	defer featuregatetesting.SetFeatureGateDuringTest(t, utilfeature.DefaultFeatureGate, features.SCTPSupport, true)()
 
 	successCases := []networking.NetworkPolicy{
 		{
@@ -78,6 +86,10 @@ func TestValidateNetworkPolicy(t *testing.T) {
 							{
 								Protocol: &protocolUDP,
 								Port:     &intstr.IntOrString{Type: intstr.String, StrVal: "dns"},
+							},
+							{
+								Protocol: &protocolSCTP,
+								Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: 7777},
 							},
 						},
 					},
@@ -262,14 +274,112 @@ func TestValidateNetworkPolicy(t *testing.T) {
 								Protocol: &protocolUDP,
 								Port:     &intstr.IntOrString{Type: intstr.String, StrVal: "dns"},
 							},
+							{
+								Protocol: &protocolSCTP,
+								Port:     &intstr.IntOrString{Type: intstr.Int, IntVal: 7777},
+							},
 						},
 					},
 				},
 			},
 		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "bar"},
+			Spec: networking.NetworkPolicySpec{
+				PodSelector: metav1.LabelSelector{
+					MatchLabels: map[string]string{"a": "b"},
+				},
+				Egress: []networking.NetworkPolicyEgressRule{
+					{
+						To: []networking.NetworkPolicyPeer{
+							{
+								NamespaceSelector: &metav1.LabelSelector{
+									MatchLabels: map[string]string{"c": "d"},
+								},
+							},
+						},
+					},
+				},
+				Ingress: []networking.NetworkPolicyIngressRule{
+					{
+						From: []networking.NetworkPolicyPeer{
+							{
+								IPBlock: &networking.IPBlock{
+									CIDR:   "fd00:192:168::/48",
+									Except: []string{"fd00:192:168:3::/64", "fd00:192:168:4::/64"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "bar"},
+			Spec: networking.NetworkPolicySpec{
+				PodSelector: metav1.LabelSelector{
+					MatchLabels: map[string]string{"a": "b"},
+				},
+				Ingress: []networking.NetworkPolicyIngressRule{
+					{
+						From: []networking.NetworkPolicyPeer{
+							{
+								IPBlock: &networking.IPBlock{
+									CIDR:   "fd00:192:168::/48",
+									Except: []string{"fd00:192:168:3::/64", "fd00:192:168:4::/64"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "bar"},
+			Spec: networking.NetworkPolicySpec{
+				PodSelector: metav1.LabelSelector{
+					MatchLabels: map[string]string{"a": "b"},
+				},
+				Egress: []networking.NetworkPolicyEgressRule{
+					{
+						To: []networking.NetworkPolicyPeer{
+							{
+								IPBlock: &networking.IPBlock{
+									CIDR:   "fd00:192:168::/48",
+									Except: []string{"fd00:192:168:3::/64", "fd00:192:168:4::/64"},
+								},
+							},
+						},
+					},
+				},
+				PolicyTypes: []networking.PolicyType{networking.PolicyTypeEgress},
+			},
+		},
+		{
+			ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "bar"},
+			Spec: networking.NetworkPolicySpec{
+				PodSelector: metav1.LabelSelector{
+					MatchLabels: map[string]string{"a": "b"},
+				},
+				Egress: []networking.NetworkPolicyEgressRule{
+					{
+						To: []networking.NetworkPolicyPeer{
+							{
+								IPBlock: &networking.IPBlock{
+									CIDR:   "fd00:192:168::/48",
+									Except: []string{"fd00:192:168:3::/64", "fd00:192:168:4::/64"},
+								},
+							},
+						},
+					},
+				},
+				PolicyTypes: []networking.PolicyType{networking.PolicyTypeIngress, networking.PolicyTypeEgress},
+			},
+		},
 	}
 
 	// Success cases are expected to pass validation.
+
 	for k, v := range successCases {
 		if errs := ValidateNetworkPolicy(&v); len(errs) != 0 {
 			t.Errorf("Expected success for %d, got %v", k, errs)
@@ -545,6 +655,26 @@ func TestValidateNetworkPolicy(t *testing.T) {
 				},
 			},
 		},
+		"invalid ipv6 cidr format": {
+			ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "bar"},
+			Spec: networking.NetworkPolicySpec{
+				PodSelector: metav1.LabelSelector{
+					MatchLabels: map[string]string{"a": "b"},
+				},
+				Ingress: []networking.NetworkPolicyIngressRule{
+					{
+						From: []networking.NetworkPolicyPeer{
+							{
+								IPBlock: &networking.IPBlock{
+									CIDR:   "fd00:192:168::",
+									Except: []string{"fd00:192:168:3::/64", "fd00:192:168:4::/64"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
 		"except field is an empty string": {
 			ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "bar"},
 			Spec: networking.NetworkPolicySpec{
@@ -578,6 +708,46 @@ func TestValidateNetworkPolicy(t *testing.T) {
 								IPBlock: &networking.IPBlock{
 									CIDR:   "192.168.8.0/24",
 									Except: []string{"192.168.9.1/24"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		"except IP is not strictly within CIDR range": {
+			ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "bar"},
+			Spec: networking.NetworkPolicySpec{
+				PodSelector: metav1.LabelSelector{
+					MatchLabels: map[string]string{"a": "b"},
+				},
+				Ingress: []networking.NetworkPolicyIngressRule{
+					{
+						From: []networking.NetworkPolicyPeer{
+							{
+								IPBlock: &networking.IPBlock{
+									CIDR:   "192.168.0.0/24",
+									Except: []string{"192.168.0.0/24"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		"except IPv6 is outside of CIDR range": {
+			ObjectMeta: metav1.ObjectMeta{Name: "foo", Namespace: "bar"},
+			Spec: networking.NetworkPolicySpec{
+				PodSelector: metav1.LabelSelector{
+					MatchLabels: map[string]string{"a": "b"},
+				},
+				Ingress: []networking.NetworkPolicyIngressRule{
+					{
+						From: []networking.NetworkPolicyPeer{
+							{
+								IPBlock: &networking.IPBlock{
+									CIDR:   "fd00:192:168:1::/64",
+									Except: []string{"fd00:192:168:2::/64"},
 								},
 							},
 						},
@@ -715,6 +885,272 @@ func TestValidateNetworkPolicyUpdate(t *testing.T) {
 		errorCase.update.ObjectMeta.ResourceVersion = "1"
 		if errs := ValidateNetworkPolicyUpdate(&errorCase.update, &errorCase.old); len(errs) == 0 {
 			t.Errorf("expected failure: %s", testName)
+		}
+	}
+}
+
+func TestValidateIngress(t *testing.T) {
+	defaultBackend := networking.IngressBackend{
+		ServiceName: "default-backend",
+		ServicePort: intstr.FromInt(80),
+	}
+
+	newValid := func() networking.Ingress {
+		return networking.Ingress{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "foo",
+				Namespace: metav1.NamespaceDefault,
+			},
+			Spec: networking.IngressSpec{
+				Backend: &networking.IngressBackend{
+					ServiceName: "default-backend",
+					ServicePort: intstr.FromInt(80),
+				},
+				Rules: []networking.IngressRule{
+					{
+						Host: "foo.bar.com",
+						IngressRuleValue: networking.IngressRuleValue{
+							HTTP: &networking.HTTPIngressRuleValue{
+								Paths: []networking.HTTPIngressPath{
+									{
+										Path:    "/foo",
+										Backend: defaultBackend,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			Status: networking.IngressStatus{
+				LoadBalancer: api.LoadBalancerStatus{
+					Ingress: []api.LoadBalancerIngress{
+						{IP: "127.0.0.1"},
+					},
+				},
+			},
+		}
+	}
+	servicelessBackend := newValid()
+	servicelessBackend.Spec.Backend.ServiceName = ""
+	invalidNameBackend := newValid()
+	invalidNameBackend.Spec.Backend.ServiceName = "defaultBackend"
+	noPortBackend := newValid()
+	noPortBackend.Spec.Backend = &networking.IngressBackend{ServiceName: defaultBackend.ServiceName}
+	noForwardSlashPath := newValid()
+	noForwardSlashPath.Spec.Rules[0].IngressRuleValue.HTTP.Paths = []networking.HTTPIngressPath{
+		{
+			Path:    "invalid",
+			Backend: defaultBackend,
+		},
+	}
+	noPaths := newValid()
+	noPaths.Spec.Rules[0].IngressRuleValue.HTTP.Paths = []networking.HTTPIngressPath{}
+	badHost := newValid()
+	badHost.Spec.Rules[0].Host = "foobar:80"
+	badRegexPath := newValid()
+	badPathExpr := "/invalid["
+	badRegexPath.Spec.Rules[0].IngressRuleValue.HTTP.Paths = []networking.HTTPIngressPath{
+		{
+			Path:    badPathExpr,
+			Backend: defaultBackend,
+		},
+	}
+	badPathErr := fmt.Sprintf("spec.rules[0].http.paths[0].path: Invalid value: '%v'", badPathExpr)
+	hostIP := "127.0.0.1"
+	badHostIP := newValid()
+	badHostIP.Spec.Rules[0].Host = hostIP
+	badHostIPErr := fmt.Sprintf("spec.rules[0].host: Invalid value: '%v'", hostIP)
+
+	errorCases := map[string]networking.Ingress{
+		"spec.backend.serviceName: Required value":        servicelessBackend,
+		"spec.backend.serviceName: Invalid value":         invalidNameBackend,
+		"spec.backend.servicePort: Invalid value":         noPortBackend,
+		"spec.rules[0].host: Invalid value":               badHost,
+		"spec.rules[0].http.paths: Required value":        noPaths,
+		"spec.rules[0].http.paths[0].path: Invalid value": noForwardSlashPath,
+	}
+	errorCases[badPathErr] = badRegexPath
+	errorCases[badHostIPErr] = badHostIP
+
+	wildcardHost := "foo.*.bar.com"
+	badWildcard := newValid()
+	badWildcard.Spec.Rules[0].Host = wildcardHost
+	badWildcardErr := fmt.Sprintf("spec.rules[0].host: Invalid value: '%v'", wildcardHost)
+	errorCases[badWildcardErr] = badWildcard
+
+	for k, v := range errorCases {
+		errs := ValidateIngress(&v)
+		if len(errs) == 0 {
+			t.Errorf("expected failure for %q", k)
+		} else {
+			s := strings.Split(k, ":")
+			err := errs[0]
+			if err.Field != s[0] || !strings.Contains(err.Error(), s[1]) {
+				t.Errorf("unexpected error: %q, expected: %q", err, k)
+			}
+		}
+	}
+}
+
+func TestValidateIngressTLS(t *testing.T) {
+	defaultBackend := networking.IngressBackend{
+		ServiceName: "default-backend",
+		ServicePort: intstr.FromInt(80),
+	}
+
+	newValid := func() networking.Ingress {
+		return networking.Ingress{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "foo",
+				Namespace: metav1.NamespaceDefault,
+			},
+			Spec: networking.IngressSpec{
+				Backend: &networking.IngressBackend{
+					ServiceName: "default-backend",
+					ServicePort: intstr.FromInt(80),
+				},
+				Rules: []networking.IngressRule{
+					{
+						Host: "foo.bar.com",
+						IngressRuleValue: networking.IngressRuleValue{
+							HTTP: &networking.HTTPIngressRuleValue{
+								Paths: []networking.HTTPIngressPath{
+									{
+										Path:    "/foo",
+										Backend: defaultBackend,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			Status: networking.IngressStatus{
+				LoadBalancer: api.LoadBalancerStatus{
+					Ingress: []api.LoadBalancerIngress{
+						{IP: "127.0.0.1"},
+					},
+				},
+			},
+		}
+	}
+
+	errorCases := map[string]networking.Ingress{}
+
+	wildcardHost := "foo.*.bar.com"
+	badWildcardTLS := newValid()
+	badWildcardTLS.Spec.Rules[0].Host = "*.foo.bar.com"
+	badWildcardTLS.Spec.TLS = []networking.IngressTLS{
+		{
+			Hosts: []string{wildcardHost},
+		},
+	}
+	badWildcardTLSErr := fmt.Sprintf("spec.tls[0].hosts: Invalid value: '%v'", wildcardHost)
+	errorCases[badWildcardTLSErr] = badWildcardTLS
+
+	for k, v := range errorCases {
+		errs := ValidateIngress(&v)
+		if len(errs) == 0 {
+			t.Errorf("expected failure for %q", k)
+		} else {
+			s := strings.Split(k, ":")
+			err := errs[0]
+			if err.Field != s[0] || !strings.Contains(err.Error(), s[1]) {
+				t.Errorf("unexpected error: %q, expected: %q", err, k)
+			}
+		}
+	}
+}
+
+func TestValidateIngressStatusUpdate(t *testing.T) {
+	defaultBackend := networking.IngressBackend{
+		ServiceName: "default-backend",
+		ServicePort: intstr.FromInt(80),
+	}
+
+	newValid := func() networking.Ingress {
+		return networking.Ingress{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:            "foo",
+				Namespace:       metav1.NamespaceDefault,
+				ResourceVersion: "9",
+			},
+			Spec: networking.IngressSpec{
+				Backend: &networking.IngressBackend{
+					ServiceName: "default-backend",
+					ServicePort: intstr.FromInt(80),
+				},
+				Rules: []networking.IngressRule{
+					{
+						Host: "foo.bar.com",
+						IngressRuleValue: networking.IngressRuleValue{
+							HTTP: &networking.HTTPIngressRuleValue{
+								Paths: []networking.HTTPIngressPath{
+									{
+										Path:    "/foo",
+										Backend: defaultBackend,
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			Status: networking.IngressStatus{
+				LoadBalancer: api.LoadBalancerStatus{
+					Ingress: []api.LoadBalancerIngress{
+						{IP: "127.0.0.1", Hostname: "foo.bar.com"},
+					},
+				},
+			},
+		}
+	}
+	oldValue := newValid()
+	newValue := newValid()
+	newValue.Status = networking.IngressStatus{
+		LoadBalancer: api.LoadBalancerStatus{
+			Ingress: []api.LoadBalancerIngress{
+				{IP: "127.0.0.2", Hostname: "foo.com"},
+			},
+		},
+	}
+	invalidIP := newValid()
+	invalidIP.Status = networking.IngressStatus{
+		LoadBalancer: api.LoadBalancerStatus{
+			Ingress: []api.LoadBalancerIngress{
+				{IP: "abcd", Hostname: "foo.com"},
+			},
+		},
+	}
+	invalidHostname := newValid()
+	invalidHostname.Status = networking.IngressStatus{
+		LoadBalancer: api.LoadBalancerStatus{
+			Ingress: []api.LoadBalancerIngress{
+				{IP: "127.0.0.1", Hostname: "127.0.0.1"},
+			},
+		},
+	}
+
+	errs := ValidateIngressStatusUpdate(&newValue, &oldValue)
+	if len(errs) != 0 {
+		t.Errorf("Unexpected error %v", errs)
+	}
+
+	errorCases := map[string]networking.Ingress{
+		"status.loadBalancer.ingress[0].ip: Invalid value":       invalidIP,
+		"status.loadBalancer.ingress[0].hostname: Invalid value": invalidHostname,
+	}
+	for k, v := range errorCases {
+		errs := ValidateIngressStatusUpdate(&v, &oldValue)
+		if len(errs) == 0 {
+			t.Errorf("expected failure for %s", k)
+		} else {
+			s := strings.Split(k, ":")
+			err := errs[0]
+			if err.Field != s[0] || !strings.Contains(err.Error(), s[1]) {
+				t.Errorf("unexpected error: %q, expected: %q", err, k)
+			}
 		}
 	}
 }

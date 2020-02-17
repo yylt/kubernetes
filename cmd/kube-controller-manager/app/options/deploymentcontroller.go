@@ -19,14 +19,12 @@ package options
 import (
 	"github.com/spf13/pflag"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/kubernetes/pkg/apis/componentconfig"
+	deploymentconfig "k8s.io/kubernetes/pkg/controller/deployment/config"
 )
 
 // DeploymentControllerOptions holds the DeploymentController options.
 type DeploymentControllerOptions struct {
-	ConcurrentDeploymentSyncs      int32
-	DeploymentControllerSyncPeriod metav1.Duration
+	*deploymentconfig.DeploymentControllerConfiguration
 }
 
 // AddFlags adds flags related to DeploymentController for controller manager to the specified FlagSet.
@@ -40,7 +38,7 @@ func (o *DeploymentControllerOptions) AddFlags(fs *pflag.FlagSet) {
 }
 
 // ApplyTo fills up DeploymentController config with options.
-func (o *DeploymentControllerOptions) ApplyTo(cfg *componentconfig.DeploymentControllerConfiguration) error {
+func (o *DeploymentControllerOptions) ApplyTo(cfg *deploymentconfig.DeploymentControllerConfiguration) error {
 	if o == nil {
 		return nil
 	}

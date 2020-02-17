@@ -8,8 +8,10 @@ load(
 go_library(
     name = "go_default_library",
     srcs = [
+        "csinode.go",
         "interface.go",
         "storageclass.go",
+        "volumeattachment.go",
     ],
     importmap = "k8s.io/kubernetes/vendor/k8s.io/client-go/informers/storage/v1",
     importpath = "k8s.io/client-go/informers/storage/v1",

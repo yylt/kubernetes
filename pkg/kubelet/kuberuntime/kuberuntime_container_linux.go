@@ -19,8 +19,15 @@ limitations under the License.
 package kuberuntime
 
 import (
-	"k8s.io/api/core/v1"
-	runtimeapi "k8s.io/kubernetes/pkg/kubelet/apis/cri/runtime/v1alpha2"
+	"time"
+
+	cgroupfs "github.com/opencontainers/runc/libcontainer/cgroups/fs"
+	v1 "k8s.io/api/core/v1"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
+	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
+	"k8s.io/klog"
+	v1helper "k8s.io/kubernetes/pkg/apis/core/v1/helper"
+	kubefeatures "k8s.io/kubernetes/pkg/features"
 	"k8s.io/kubernetes/pkg/kubelet/qos"
 )
 
@@ -65,10 +72,57 @@ func (m *kubeGenericRuntimeManager) generateLinuxContainerConfig(container *v1.C
 	if m.cpuCFSQuota {
 		// if cpuLimit.Amount is nil, then the appropriate default value is returned
 		// to allow full usage of cpu resource.
-		cpuQuota, cpuPeriod := milliCPUToQuota(cpuLimit.MilliValue())
+		cpuPeriod := int64(quotaPeriod)
+		if utilfeature.DefaultFeatureGate.Enabled(kubefeatures.CPUCFSQuotaPeriod) {
+			cpuPeriod = int64(m.cpuCFSQuotaPeriod.Duration / time.Microsecond)
+		}
+		cpuQuota := milliCPUToQuota(cpuLimit.MilliValue(), cpuPeriod)
 		lc.Resources.CpuQuota = cpuQuota
 		lc.Resources.CpuPeriod = cpuPeriod
 	}
 
+	lc.Resources.HugepageLimits = GetHugepageLimitsFromResources(container.Resources)
+
 	return lc
+}
+
+// GetHugepageLimitsFromResources returns limits of each hugepages from resources.
+func GetHugepageLimitsFromResources(resources v1.ResourceRequirements) []*runtimeapi.HugepageLimit {
+	var hugepageLimits []*runtimeapi.HugepageLimit
+
+	// For each page size, limit to 0.
+	for _, pageSize := range cgroupfs.HugePageSizes {
+		hugepageLimits = append(hugepageLimits, &runtimeapi.HugepageLimit{
+			PageSize: pageSize,
+			Limit:    uint64(0),
+		})
+	}
+
+	requiredHugepageLimits := map[string]uint64{}
+	for resourceObj, amountObj := range resources.Limits {
+		if !v1helper.IsHugePageResourceName(resourceObj) {
+			continue
+		}
+
+		pageSize, err := v1helper.HugePageSizeFromResourceName(resourceObj)
+		if err != nil {
+			klog.Warningf("Failed to get hugepage size from resource name: %v", err)
+			continue
+		}
+
+		sizeString, err := v1helper.HugePageUnitSizeFromByteSize(pageSize.Value())
+		if err != nil {
+			klog.Warningf("pageSize is invalid: %v", err)
+			continue
+		}
+		requiredHugepageLimits[sizeString] = uint64(amountObj.Value())
+	}
+
+	for _, hugepageLimit := range hugepageLimits {
+		if limit, exists := requiredHugepageLimits[hugepageLimit.PageSize]; exists {
+			hugepageLimit.Limit = limit
+		}
+	}
+
+	return hugepageLimits
 }

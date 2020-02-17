@@ -21,6 +21,7 @@ go_library(
         "gtp_linux.go",
         "handle_linux.go",
         "handle_unspecified.go",
+        "ioctl_linux.go",
         "link.go",
         "link_linux.go",
         "link_tuntap_linux.go",
@@ -48,7 +49,6 @@ go_library(
         "xfrm_state.go",
         "xfrm_state_linux.go",
     ],
-    cgo = True,
     importmap = "k8s.io/kubernetes/vendor/github.com/vishvananda/netlink",
     importpath = "github.com/vishvananda/netlink",
     visibility = ["//visibility:public"],
@@ -66,6 +66,9 @@ go_library(
             "//vendor/github.com/vishvananda/netns:go_default_library",
         ],
         "@io_bazel_rules_go//go/platform:freebsd": [
+            "//vendor/github.com/vishvananda/netns:go_default_library",
+        ],
+        "@io_bazel_rules_go//go/platform:ios": [
             "//vendor/github.com/vishvananda/netns:go_default_library",
         ],
         "@io_bazel_rules_go//go/platform:linux": [

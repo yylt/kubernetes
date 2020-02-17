@@ -17,6 +17,7 @@ limitations under the License.
 package integration
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -76,7 +77,7 @@ func TestFinalization(t *testing.T) {
 	// object will be deleted as part of the finalizer update.
 	for {
 		gottenNoxuInstance.SetFinalizers(nil)
-		_, err = noxuResourceClient.Update(gottenNoxuInstance)
+		_, err = noxuResourceClient.Update(gottenNoxuInstance, metav1.UpdateOptions{})
 		if err == nil {
 			break
 		}
@@ -137,7 +138,7 @@ func TestFinalizationAndDeletion(t *testing.T) {
 	// Update the CR to remove the finalizer.
 	for {
 		gottenNoxuInstance.SetFinalizers(nil)
-		_, err = noxuResourceClient.Update(gottenNoxuInstance)
+		_, err = noxuResourceClient.Update(gottenNoxuInstance, metav1.UpdateOptions{})
 		if err == nil {
 			break
 		}
@@ -156,7 +157,7 @@ func TestFinalizationAndDeletion(t *testing.T) {
 	}
 
 	err = wait.Poll(500*time.Millisecond, wait.ForeverTestTimeout, func() (bool, error) {
-		_, err = apiExtensionClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(noxuDefinition.Name, metav1.GetOptions{})
+		_, err = apiExtensionClient.ApiextensionsV1beta1().CustomResourceDefinitions().Get(context.TODO(), noxuDefinition.Name, metav1.GetOptions{})
 		return errors.IsNotFound(err), err
 	})
 	if !errors.IsNotFound(err) {

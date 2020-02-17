@@ -19,15 +19,13 @@ package options
 import (
 	"github.com/spf13/pflag"
 
-	"k8s.io/kubernetes/pkg/apis/componentconfig"
+	kubectrlmgrconfig "k8s.io/kubernetes/pkg/controller/apis/config"
 )
 
 // DeprecatedControllerOptions holds the DeprecatedController options, those option are deprecated.
 // TODO remove these fields once the deprecated flags are removed.
 type DeprecatedControllerOptions struct {
-	DeletingPodsQPS    float32
-	DeletingPodsBurst  int32
-	RegisterRetryCount int32
+	*kubectrlmgrconfig.DeprecatedControllerConfiguration
 }
 
 // AddFlags adds flags related to DeprecatedController for controller manager to the specified FlagSet.
@@ -46,12 +44,12 @@ func (o *DeprecatedControllerOptions) AddFlags(fs *pflag.FlagSet) {
 }
 
 // ApplyTo fills up DeprecatedController config with options.
-func (o *DeprecatedControllerOptions) ApplyTo(cfg *componentconfig.DeprecatedControllerConfiguration) error {
+func (o *DeprecatedControllerOptions) ApplyTo(cfg *kubectrlmgrconfig.DeprecatedControllerConfiguration) error {
 	if o == nil {
 		return nil
 	}
 
-	cfg.DeletingPodsQps = o.DeletingPodsQPS
+	cfg.DeletingPodsQPS = o.DeletingPodsQPS
 	cfg.DeletingPodsBurst = o.DeletingPodsBurst
 	cfg.RegisterRetryCount = o.RegisterRetryCount
 

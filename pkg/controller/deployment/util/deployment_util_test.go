@@ -18,6 +18,7 @@ package util
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"reflect"
 	"sort"
@@ -33,6 +34,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apiserver/pkg/storage/names"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	core "k8s.io/client-go/testing"
 	"k8s.io/kubernetes/pkg/controller"
@@ -150,6 +152,7 @@ func randomUID() types.UID {
 func generateDeployment(image string) apps.Deployment {
 	podLabels := map[string]string{"name": image}
 	terminationSec := int64(30)
+	enableServiceLinks := v1.DefaultEnableServiceLinks
 	return apps.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        image,
@@ -175,6 +178,7 @@ func generateDeployment(image string) apps.Deployment {
 					TerminationGracePeriodSeconds: &terminationSec,
 					RestartPolicy:                 v1.RestartPolicyAlways,
 					SecurityContext:               &v1.PodSecurityContext{},
+					EnableServiceLinks:            &enableServiceLinks,
 				},
 			},
 		},
@@ -503,7 +507,6 @@ func TestFindOldReplicaSets(t *testing.T) {
 		Name            string
 		deployment      apps.Deployment
 		rsList          []*apps.ReplicaSet
-		podList         *v1.PodList
 		expected        []*apps.ReplicaSet
 		expectedRequire []*apps.ReplicaSet
 	}{
@@ -617,52 +620,83 @@ func TestGetReplicaCountForReplicaSets(t *testing.T) {
 
 func TestResolveFenceposts(t *testing.T) {
 	tests := []struct {
-		maxSurge          string
-		maxUnavailable    string
+		maxSurge          *string
+		maxUnavailable    *string
 		desired           int32
 		expectSurge       int32
 		expectUnavailable int32
 		expectError       bool
 	}{
 		{
-			maxSurge:          "0%",
-			maxUnavailable:    "0%",
+			maxSurge:          newString("0%"),
+			maxUnavailable:    newString("0%"),
 			desired:           0,
 			expectSurge:       0,
 			expectUnavailable: 1,
 			expectError:       false,
 		},
 		{
-			maxSurge:          "39%",
-			maxUnavailable:    "39%",
+			maxSurge:          newString("39%"),
+			maxUnavailable:    newString("39%"),
 			desired:           10,
 			expectSurge:       4,
 			expectUnavailable: 3,
 			expectError:       false,
 		},
 		{
-			maxSurge:          "oops",
-			maxUnavailable:    "39%",
+			maxSurge:          newString("oops"),
+			maxUnavailable:    newString("39%"),
 			desired:           10,
 			expectSurge:       0,
 			expectUnavailable: 0,
 			expectError:       true,
 		},
 		{
-			maxSurge:          "55%",
-			maxUnavailable:    "urg",
+			maxSurge:          newString("55%"),
+			maxUnavailable:    newString("urg"),
 			desired:           10,
 			expectSurge:       0,
 			expectUnavailable: 0,
 			expectError:       true,
 		},
+		{
+			maxSurge:          nil,
+			maxUnavailable:    newString("39%"),
+			desired:           10,
+			expectSurge:       0,
+			expectUnavailable: 3,
+			expectError:       false,
+		},
+		{
+			maxSurge:          newString("39%"),
+			maxUnavailable:    nil,
+			desired:           10,
+			expectSurge:       4,
+			expectUnavailable: 0,
+			expectError:       false,
+		},
+		{
+			maxSurge:          nil,
+			maxUnavailable:    nil,
+			desired:           10,
+			expectSurge:       0,
+			expectUnavailable: 1,
+			expectError:       false,
+		},
 	}
 
 	for num, test := range tests {
-		t.Run("maxSurge="+test.maxSurge, func(t *testing.T) {
-			maxSurge := intstr.FromString(test.maxSurge)
-			maxUnavail := intstr.FromString(test.maxUnavailable)
-			surge, unavail, err := ResolveFenceposts(&maxSurge, &maxUnavail, test.desired)
+		t.Run(fmt.Sprintf("%d", num), func(t *testing.T) {
+			var maxSurge, maxUnavail *intstr.IntOrString
+			if test.maxSurge != nil {
+				surge := intstr.FromString(*test.maxSurge)
+				maxSurge = &surge
+			}
+			if test.maxUnavailable != nil {
+				unavail := intstr.FromString(*test.maxUnavailable)
+				maxUnavail = &unavail
+			}
+			surge, unavail, err := ResolveFenceposts(maxSurge, maxUnavail, test.desired)
 			if err != nil && !test.expectError {
 				t.Errorf("unexpected error %v", err)
 			}
@@ -674,6 +708,10 @@ func TestResolveFenceposts(t *testing.T) {
 			}
 		})
 	}
+}
+
+func newString(s string) *string {
+	return &s
 }
 
 func TestNewRSNewReplicas(t *testing.T) {
@@ -1068,8 +1106,9 @@ func TestDeploymentProgressing(t *testing.T) {
 
 func TestDeploymentTimedOut(t *testing.T) {
 	var (
-		null *int32
-		ten  = int32(10)
+		null     *int32
+		ten      = int32(10)
+		infinite = int32(math.MaxInt32)
 	)
 
 	timeFn := func(min, sec int) time.Time {
@@ -1102,9 +1141,16 @@ func TestDeploymentTimedOut(t *testing.T) {
 		expected bool
 	}{
 		{
-			name: "no progressDeadlineSeconds specified - no timeout",
+			name: "nil progressDeadlineSeconds specified - no timeout",
 
 			d:        deployment(apps.DeploymentProgressing, v1.ConditionTrue, "", null, timeFn(1, 9)),
+			nowFn:    func() time.Time { return timeFn(1, 20) },
+			expected: false,
+		},
+		{
+			name: "infinite progressDeadlineSeconds specified - no timeout",
+
+			d:        deployment(apps.DeploymentProgressing, v1.ConditionTrue, "", &infinite, timeFn(1, 9)),
 			nowFn:    func() time.Time { return timeFn(1, 20) },
 			expected: false,
 		},
@@ -1229,13 +1275,19 @@ func TestAnnotationUtils(t *testing.T) {
 
 	//Test Case 1: Check if anotations are copied properly from deployment to RS
 	t.Run("SetNewReplicaSetAnnotations", func(t *testing.T) {
-		//Try to set the increment revision from 1 through 20
-		for i := 0; i < 20; i++ {
+		//Try to set the increment revision from 11 through 20
+		for i := 10; i < 20; i++ {
 
 			nextRevision := fmt.Sprintf("%d", i+1)
-			SetNewReplicaSetAnnotations(&tDeployment, &tRS, nextRevision, true)
+			SetNewReplicaSetAnnotations(&tDeployment, &tRS, nextRevision, true, 5)
 			//Now the ReplicaSets Revision Annotation should be i+1
 
+			if i >= 12 {
+				expectedHistoryAnnotation := fmt.Sprintf("%d,%d", i-1, i)
+				if tRS.Annotations[RevisionHistoryAnnotation] != expectedHistoryAnnotation {
+					t.Errorf("Revision History Expected=%s Obtained=%s", expectedHistoryAnnotation, tRS.Annotations[RevisionHistoryAnnotation])
+				}
+			}
 			if tRS.Annotations[RevisionAnnotation] != nextRevision {
 				t.Errorf("Revision Expected=%s Obtained=%s", nextRevision, tRS.Annotations[RevisionAnnotation])
 			}
@@ -1350,4 +1402,85 @@ func TestReplicasAnnotationsNeedUpdate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetDeploymentsForReplicaSet(t *testing.T) {
+	fakeInformerFactory := informers.NewSharedInformerFactory(&fake.Clientset{}, 0*time.Second)
+	var deployments []*apps.Deployment
+	for i := 0; i < 3; i++ {
+		deployment := &apps.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      fmt.Sprintf("deployment-%d", i),
+				Namespace: "test",
+			},
+			Spec: apps.DeploymentSpec{
+				Selector: &metav1.LabelSelector{
+					MatchLabels: map[string]string{
+						"app": fmt.Sprintf("test-%d", i),
+					},
+				},
+			},
+		}
+		deployments = append(deployments, deployment)
+		fakeInformerFactory.Apps().V1().Deployments().Informer().GetStore().Add(deployment)
+	}
+	var rss []*apps.ReplicaSet
+	for i := 0; i < 5; i++ {
+		rs := &apps.ReplicaSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: "test",
+				Name:      fmt.Sprintf("test-replicaSet-%d", i),
+				Labels: map[string]string{
+					"app":   fmt.Sprintf("test-%d", i),
+					"label": fmt.Sprintf("label-%d", i),
+				},
+			},
+		}
+		rss = append(rss, rs)
+	}
+	tests := []struct {
+		name   string
+		rs     *apps.ReplicaSet
+		err    error
+		expect []*apps.Deployment
+	}{
+		{
+			name:   "GetDeploymentsForReplicaSet for rs-0",
+			rs:     rss[0],
+			expect: []*apps.Deployment{deployments[0]},
+		},
+		{
+			name:   "GetDeploymentsForReplicaSet for rs-1",
+			rs:     rss[1],
+			expect: []*apps.Deployment{deployments[1]},
+		},
+		{
+			name:   "GetDeploymentsForReplicaSet for rs-2",
+			rs:     rss[2],
+			expect: []*apps.Deployment{deployments[2]},
+		},
+		{
+			name: "GetDeploymentsForReplicaSet for rs-3",
+			rs:   rss[3],
+			err:  fmt.Errorf("could not find deployments set for ReplicaSet %s in namespace %s with labels: %v", rss[3].Name, rss[3].Namespace, rss[3].Labels),
+		},
+		{
+			name: "GetDeploymentsForReplicaSet for rs-4",
+			rs:   rss[4],
+			err:  fmt.Errorf("could not find deployments set for ReplicaSet %s in namespace %s with labels: %v", rss[4].Name, rss[4].Namespace, rss[4].Labels),
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			get, err := GetDeploymentsForReplicaSet(fakeInformerFactory.Apps().V1().Deployments().Lister(), test.rs)
+			if err != nil {
+				if err.Error() != test.err.Error() {
+					t.Errorf("Error from GetDeploymentsForReplicaSet: %v", err)
+				}
+			} else if !reflect.DeepEqual(get, test.expect) {
+				t.Errorf("Expect deployments %v, but got %v", test.expect, get)
+			}
+		})
+	}
+
 }

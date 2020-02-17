@@ -26,7 +26,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/pborman/uuid"
+	"github.com/google/uuid"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -42,13 +42,14 @@ type fakeAuditSink struct {
 	events []*auditinternal.Event
 }
 
-func (s *fakeAuditSink) ProcessEvents(evs ...*auditinternal.Event) {
+func (s *fakeAuditSink) ProcessEvents(evs ...*auditinternal.Event) bool {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	for _, e := range evs {
 		event := e.DeepCopy()
 		s.events = append(s.events, event)
 	}
+	return true
 }
 
 func (s *fakeAuditSink) Events() []*auditinternal.Event {
@@ -222,7 +223,7 @@ func TestAudit(t *testing.T) {
 			"short running with auditID",
 			shortRunningPath,
 			"GET",
-			uuid.NewRandom().String(),
+			uuid.New().String(),
 			nil,
 			func(w http.ResponseWriter, req *http.Request) {
 				w.Write([]byte("foo"))
@@ -421,7 +422,7 @@ func TestAudit(t *testing.T) {
 			"empty longrunning with audit id",
 			longRunningPath,
 			"GET",
-			uuid.NewRandom().String(),
+			uuid.New().String(),
 			nil,
 			func(w http.ResponseWriter, req *http.Request) {
 				w.Write([]byte("foo"))
@@ -777,7 +778,7 @@ func TestAuditIDHttpHeader(t *testing.T) {
 		},
 		{
 			"no http header when there is no audit even the request header specified",
-			uuid.NewRandom().String(),
+			uuid.New().String(),
 			auditinternal.LevelNone,
 			false,
 		},
@@ -789,7 +790,7 @@ func TestAuditIDHttpHeader(t *testing.T) {
 		},
 		{
 			"user provided header",
-			uuid.NewRandom().String(),
+			uuid.New().String(),
 			auditinternal.LevelRequestResponse,
 			true,
 		},
@@ -817,7 +818,7 @@ func TestAuditIDHttpHeader(t *testing.T) {
 				t.Errorf("[%s] expected Audit-ID http header returned, but not returned", test.desc)
 				continue
 			}
-			// if get Audit-ID returned, it should be the same same with the requested one
+			// if get Audit-ID returned, it should be the same with the requested one
 			if test.requestHeader != "" && resp.Header.Get("Audit-ID") != test.requestHeader {
 				t.Errorf("[%s] returned audit http header is not the same with the requested http header, expected: %s, get %s", test.desc, test.requestHeader, resp.Header.Get("Audit-ID"))
 			}

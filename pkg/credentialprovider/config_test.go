@@ -17,6 +17,7 @@ limitations under the License.
 package credentialprovider
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"io/ioutil"
 	"os"
@@ -28,7 +29,6 @@ import (
 func TestReadDockerConfigFile(t *testing.T) {
 	configJsonFileName := "config.json"
 	var fileInfo *os.File
-	preferredPaths := []string{}
 
 	//test dockerconfig json
 	inputDockerconfigJsonFile := "{ \"auths\": { \"http://foo.example.com\":{\"auth\":\"Zm9vOmJhcgo=\",\"email\":\"foo@example.com\"}}}"
@@ -39,7 +39,6 @@ func TestReadDockerConfigFile(t *testing.T) {
 		return
 	}
 	defer os.RemoveAll(preferredPath)
-	preferredPaths = append(preferredPaths, preferredPath)
 	absDockerConfigFileLocation, err := filepath.Abs(filepath.Join(preferredPath, configJsonFileName))
 	if err != nil {
 		t.Fatalf("While trying to canonicalize %s: %v", preferredPath, err)
@@ -64,6 +63,7 @@ func TestReadDockerConfigFile(t *testing.T) {
 	}
 }
 func TestDockerConfigJsonJSONDecode(t *testing.T) {
+	// Fake values for testing.
 	input := []byte(`{"auths": {"http://foo.example.com":{"username": "foo", "password": "bar", "email": "foo@example.com"}, "http://bar.example.com":{"username": "bar", "password": "baz", "email": "bar@example.com"}}}`)
 
 	expect := DockerConfigJson{
@@ -93,6 +93,7 @@ func TestDockerConfigJsonJSONDecode(t *testing.T) {
 }
 
 func TestDockerConfigJSONDecode(t *testing.T) {
+	// Fake values for testing.
 	input := []byte(`{"http://foo.example.com":{"username": "foo", "password": "bar", "email": "foo@example.com"}, "http://bar.example.com":{"username": "bar", "password": "baz", "email": "bar@example.com"}}`)
 
 	expect := DockerConfig(map[string]DockerConfigEntry{
@@ -127,6 +128,7 @@ func TestDockerConfigEntryJSONDecode(t *testing.T) {
 	}{
 		// simple case, just decode the fields
 		{
+			// Fake values for testing.
 			input: []byte(`{"username": "foo", "password": "bar", "email": "foo@example.com"}`),
 			expect: DockerConfigEntry{
 				Username: "foo",
@@ -149,6 +151,7 @@ func TestDockerConfigEntryJSONDecode(t *testing.T) {
 
 		// auth field overrides username & password
 		{
+			// Fake values for testing.
 			input: []byte(`{"username": "foo", "password": "bar", "auth": "cGluZzpwb25n", "email": "foo@example.com"}`),
 			expect: DockerConfigEntry{
 				Username: "ping",
@@ -208,9 +211,50 @@ func TestDecodeDockerConfigFieldAuth(t *testing.T) {
 			password: "bar",
 		},
 
+		// some test as before but with field not well padded
+		{
+			input:    "Zm9vOmJhcg",
+			username: "foo",
+			password: "bar",
+		},
+
+		// some test as before but with new line characters
+		{
+			input:    "Zm9vOm\nJhcg==\n",
+			username: "foo",
+			password: "bar",
+		},
+
+		// standard encoding (with padding)
+		{
+			input:    base64.StdEncoding.EncodeToString([]byte("foo:bar")),
+			username: "foo",
+			password: "bar",
+		},
+
+		// raw encoding (without padding)
+		{
+			input:    base64.RawStdEncoding.EncodeToString([]byte("foo:bar")),
+			username: "foo",
+			password: "bar",
+		},
+
+		// the input is encoded with encodeDockerConfigFieldAuth (standard encoding)
+		{
+			input:    encodeDockerConfigFieldAuth("foo", "bar"),
+			username: "foo",
+			password: "bar",
+		},
+
 		// good base64 data, but no colon separating username & password
 		{
 			input: "cGFudHM=",
+			fail:  true,
+		},
+
+		// only new line characters are ignored
+		{
+			input: "Zm9vOmJhcg== ",
 			fail:  true,
 		},
 
@@ -244,6 +288,7 @@ func TestDockerConfigEntryJSONCompatibleEncode(t *testing.T) {
 	}{
 		// simple case, just decode the fields
 		{
+			// Fake values for testing.
 			expect: []byte(`{"username":"foo","password":"bar","email":"foo@example.com","auth":"Zm9vOmJhcg=="}`),
 			input: DockerConfigEntry{
 				Username: "foo",

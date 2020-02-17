@@ -17,18 +17,20 @@ limitations under the License.
 package network
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"time"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/kubernetes/test/e2e/framework"
+	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	testutils "k8s.io/kubernetes/test/utils"
 
-	. "github.com/onsi/ginkgo"
+	"github.com/onsi/ginkgo"
 )
 
 const (
@@ -38,19 +40,19 @@ const (
 	checkServicePercent          = 0.05
 )
 
-var _ = SIGDescribe("[Feature:PerformanceDNS]", func() {
+var _ = SIGDescribe("[Feature:PerformanceDNS][Serial]", func() {
 	f := framework.NewDefaultFramework("performancedns")
 
-	BeforeEach(func() {
+	ginkgo.BeforeEach(func() {
 		framework.ExpectNoError(framework.WaitForAllNodesSchedulable(f.ClientSet, framework.TestContext.NodeSchedulableTimeout))
-		framework.WaitForAllNodesHealthy(f.ClientSet, time.Minute)
+		e2enode.WaitForTotalHealthy(f.ClientSet, time.Minute)
 
 		err := framework.CheckTestingNSDeletedExcept(f.ClientSet, f.Namespace.Name)
 		framework.ExpectNoError(err)
 	})
 
 	// answers dns for service - creates the maximum number of services, and then check dns record for one
-	It("Should answer DNS query for maximum number of services per cluster", func() {
+	ginkgo.It("Should answer DNS query for maximum number of services per cluster", func() {
 		// get integer ceiling of maxServicesPerCluster / maxServicesPerNamespace
 		numNs := (maxServicesPerCluster + maxServicesPerNamespace - 1) / maxServicesPerNamespace
 
@@ -62,11 +64,11 @@ var _ = SIGDescribe("[Feature:PerformanceDNS]", func() {
 
 		services := generateServicesInNamespaces(namespaces, maxServicesPerCluster)
 		createService := func(i int) {
-			defer GinkgoRecover()
+			defer ginkgo.GinkgoRecover()
 			framework.ExpectNoError(testutils.CreateServiceWithRetries(f.ClientSet, services[i].Namespace, services[i]))
 		}
 		framework.Logf("Creating %v test services", maxServicesPerCluster)
-		workqueue.Parallelize(parallelCreateServiceWorkers, len(services), createService)
+		workqueue.ParallelizeUntil(context.TODO(), parallelCreateServiceWorkers, len(services), createService)
 		dnsTest := dnsTestCommon{
 			f:  f,
 			c:  f.ClientSet,
@@ -80,9 +82,9 @@ var _ = SIGDescribe("[Feature:PerformanceDNS]", func() {
 				continue
 			}
 			s := services[i]
-			svc, err := f.ClientSet.CoreV1().Services(s.Namespace).Get(s.Name, metav1.GetOptions{})
+			svc, err := f.ClientSet.CoreV1().Services(s.Namespace).Get(context.TODO(), s.Name, metav1.GetOptions{})
 			framework.ExpectNoError(err)
-			qname := fmt.Sprintf("%v.%v.svc.cluster.local", s.Name, s.Namespace)
+			qname := fmt.Sprintf("%v.%v.svc.%v", s.Name, s.Namespace, framework.TestContext.ClusterDNSDomain)
 			framework.Logf("Querying %v expecting %v", qname, svc.Spec.ClusterIP)
 			dnsTest.checkDNSRecordFrom(
 				qname,

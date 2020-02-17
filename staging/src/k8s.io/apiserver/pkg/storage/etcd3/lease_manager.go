@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/coreos/etcd/clientv3"
+	"go.etcd.io/etcd/clientv3"
 )
 
 // leaseManager is used to manage leases requested from etcd. If a new write
@@ -51,7 +51,7 @@ func newDefaultLeaseManager(client *clientv3.Client) *leaseManager {
 // value x means x*100%.
 func newLeaseManager(client *clientv3.Client, leaseReuseDurationSeconds int64, leaseReuseDurationPercent float64) *leaseManager {
 	return &leaseManager{
-		client: client,
+		client:                    client,
 		leaseReuseDurationSeconds: leaseReuseDurationSeconds,
 		leaseReuseDurationPercent: leaseReuseDurationPercent,
 	}

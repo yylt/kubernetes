@@ -28,9 +28,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	clientscheme "k8s.io/client-go/kubernetes/scheme"
 	utiltesting "k8s.io/client-go/util/testing"
-	"k8s.io/kubernetes/pkg/api/legacyscheme"
-	"k8s.io/kubernetes/pkg/api/testapi"
 	api "k8s.io/kubernetes/pkg/apis/core"
 	k8s_api_v1 "k8s.io/kubernetes/pkg/apis/core/v1"
 	"k8s.io/kubernetes/pkg/apis/core/validation"
@@ -112,7 +111,7 @@ func TestExtractInvalidPods(t *testing.T) {
 			t.Fatalf("%s: Some weird json problem: %v", testCase.desc, err)
 		}
 		fakeHandler := utiltesting.FakeHandler{
-			StatusCode:   200,
+			StatusCode:   http.StatusOK,
 			ResponseBody: string(data),
 		}
 		testServer := httptest.NewServer(&fakeHandler)
@@ -129,6 +128,7 @@ func TestExtractPodsFromHTTP(t *testing.T) {
 	nodeName := "different-value"
 
 	grace := int64(30)
+	enableServiceLinks := v1.DefaultEnableServiceLinks
 	var testCases = []struct {
 		desc     string
 		pods     runtime.Object
@@ -173,10 +173,11 @@ func TestExtractPodsFromHTTP(t *testing.T) {
 						SecurityContext:               &v1.PodSecurityContext{},
 						TerminationGracePeriodSeconds: &grace,
 						SchedulerName:                 api.DefaultSchedulerName,
+						EnableServiceLinks:            &enableServiceLinks,
 
 						Containers: []v1.Container{{
-							Name:  "1",
-							Image: "foo",
+							Name:                     "1",
+							Image:                    "foo",
 							TerminationMessagePath:   "/dev/termination-log",
 							ImagePullPolicy:          "Always",
 							TerminationMessagePolicy: v1.TerminationMessageReadFile,
@@ -244,10 +245,11 @@ func TestExtractPodsFromHTTP(t *testing.T) {
 						TerminationGracePeriodSeconds: &grace,
 						SecurityContext:               &v1.PodSecurityContext{},
 						SchedulerName:                 api.DefaultSchedulerName,
+						EnableServiceLinks:            &enableServiceLinks,
 
 						Containers: []v1.Container{{
-							Name:  "1",
-							Image: "foo",
+							Name:                     "1",
+							Image:                    "foo",
 							TerminationMessagePath:   "/dev/termination-log",
 							ImagePullPolicy:          "Always",
 							TerminationMessagePolicy: v1.TerminationMessageReadFile,
@@ -272,10 +274,11 @@ func TestExtractPodsFromHTTP(t *testing.T) {
 						TerminationGracePeriodSeconds: &grace,
 						SecurityContext:               &v1.PodSecurityContext{},
 						SchedulerName:                 api.DefaultSchedulerName,
+						EnableServiceLinks:            &enableServiceLinks,
 
 						Containers: []v1.Container{{
-							Name:  "2",
-							Image: "bar:bartag",
+							Name:                     "2",
+							Image:                    "bar:bartag",
 							TerminationMessagePath:   "/dev/termination-log",
 							ImagePullPolicy:          "IfNotPresent",
 							TerminationMessagePolicy: v1.TerminationMessageReadFile,
@@ -289,17 +292,12 @@ func TestExtractPodsFromHTTP(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		var versionedPods runtime.Object
-		err := legacyscheme.Scheme.Convert(&testCase.pods, &versionedPods, nil)
-		if err != nil {
-			t.Fatalf("%s: error in versioning the pods: %s", testCase.desc, err)
-		}
-		data, err := runtime.Encode(testapi.Default.Codec(), versionedPods)
+		data, err := runtime.Encode(clientscheme.Codecs.LegacyCodec(v1.SchemeGroupVersion), testCase.pods)
 		if err != nil {
 			t.Fatalf("%s: error in encoding the pod: %v", testCase.desc, err)
 		}
 		fakeHandler := utiltesting.FakeHandler{
-			StatusCode:   200,
+			StatusCode:   http.StatusOK,
 			ResponseBody: string(data),
 		}
 		testServer := httptest.NewServer(&fakeHandler)
@@ -349,7 +347,7 @@ func TestURLWithHeader(t *testing.T) {
 		t.Fatalf("Unexpected json marshalling error: %v", err)
 	}
 	fakeHandler := utiltesting.FakeHandler{
-		StatusCode:   200,
+		StatusCode:   http.StatusOK,
 		ResponseBody: string(data),
 	}
 	testServer := httptest.NewServer(&fakeHandler)

@@ -14,9 +14,8 @@ go_library(
     ],
     importpath = "k8s.io/kubernetes/pkg/kubelet/dockershim/network/testing",
     deps = [
-        "//pkg/kubelet/apis/kubeletconfig:go_default_library",
+        "//pkg/kubelet/apis/config:go_default_library",
         "//pkg/kubelet/container:go_default_library",
-        "//pkg/kubelet/container/testing:go_default_library",
         "//pkg/kubelet/dockershim/network:go_default_library",
         "//pkg/kubelet/dockershim/network/hostport:go_default_library",
         "//staging/src/k8s.io/api/core/v1:go_default_library",
@@ -31,7 +30,7 @@ go_test(
     srcs = ["plugins_test.go"],
     embed = [":go_default_library"],
     deps = [
-        "//pkg/kubelet/apis/kubeletconfig:go_default_library",
+        "//pkg/kubelet/apis/config:go_default_library",
         "//pkg/kubelet/container:go_default_library",
         "//pkg/kubelet/dockershim/network:go_default_library",
         "//pkg/util/sysctl/testing:go_default_library",

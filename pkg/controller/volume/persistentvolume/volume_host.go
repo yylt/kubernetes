@@ -20,14 +20,18 @@ import (
 	"fmt"
 	"net"
 
+	"k8s.io/klog"
+	utilexec "k8s.io/utils/exec"
+	"k8s.io/utils/mount"
+
 	authenticationv1 "k8s.io/api/authentication/v1"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/kubernetes/pkg/cloudprovider"
-	"k8s.io/kubernetes/pkg/util/mount"
+	cloudprovider "k8s.io/cloud-provider"
 	vol "k8s.io/kubernetes/pkg/volume"
+	"k8s.io/kubernetes/pkg/volume/util/subpath"
 )
 
 // VolumeHost interface implementation for PersistentVolumeController.
@@ -108,8 +112,14 @@ func (ctrl *PersistentVolumeController) GetServiceAccountTokenFunc() func(_, _ s
 	}
 }
 
-func (adc *PersistentVolumeController) GetExec(pluginName string) mount.Exec {
-	return mount.NewOsExec()
+func (ctrl *PersistentVolumeController) DeleteServiceAccountTokenFunc() func(types.UID) {
+	return func(types.UID) {
+		klog.Errorf("DeleteServiceAccountToken unsupported in PersistentVolumeController")
+	}
+}
+
+func (adc *PersistentVolumeController) GetExec(pluginName string) utilexec.Interface {
+	return utilexec.New()
 }
 
 func (ctrl *PersistentVolumeController) GetNodeLabels() (map[string]string, error) {
@@ -122,4 +132,9 @@ func (ctrl *PersistentVolumeController) GetNodeName() types.NodeName {
 
 func (ctrl *PersistentVolumeController) GetEventRecorder() record.EventRecorder {
 	return ctrl.eventRecorder
+}
+
+func (ctrl *PersistentVolumeController) GetSubpather() subpath.Interface {
+	// No volume plugin needs Subpaths in PV controller.
+	return nil
 }

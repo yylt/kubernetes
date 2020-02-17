@@ -18,7 +18,8 @@ set -o errexit
 set -o pipefail
 set -o nounset
 
-export KUBE_ROOT=$(dirname "${BASH_SOURCE}")/..
+KUBE_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
+export KUBE_ROOT
 source "${KUBE_ROOT}/hack/lib/init.sh"
 source "${KUBE_ROOT}/hack/lib/logging.sh"
 
@@ -46,6 +47,7 @@ BINDATA_OUTPUT="test/e2e/generated/bindata.go"
 go-bindata -nometadata -o "${BINDATA_OUTPUT}.tmp" -pkg generated \
 	-ignore .jpg -ignore .png -ignore .md -ignore 'BUILD(\.bazel)?' \
 	"test/e2e/testing-manifests/..." \
+	"test/e2e_node/testing-manifests/..." \
 	"test/images/..." \
 	"test/fixtures/..."
 
@@ -64,7 +66,7 @@ fi
 rm -f "${BINDATA_OUTPUT}.tmp"
 
 # These are files for runtime code
-BINDATA_OUTPUT="pkg/generated/bindata.go"
+BINDATA_OUTPUT="staging/src/k8s.io/kubectl/pkg/generated/bindata.go"
 # IMPORTANT: if you make any changes to these arguments, you must also update
 # pkg/generated/BUILD and/or build/bindata.bzl.
 go-bindata -nometadata -nocompress -o "${BINDATA_OUTPUT}.tmp" -pkg generated \

@@ -22,19 +22,24 @@ import (
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/kubernetes/typed/events/v1beta1"
+	restclient "k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/kubernetes/cmd/controller-manager/app"
-	"k8s.io/kubernetes/pkg/apis/componentconfig"
+	kubeschedulerconfig "k8s.io/kubernetes/pkg/scheduler/apis/config"
 )
 
 // Config has all the context to run a Scheduler
 type Config struct {
-	// config is the scheduler server's configuration object.
-	ComponentConfig componentconfig.KubeSchedulerConfiguration
+	// ComponentConfig is the scheduler server's configuration object.
+	ComponentConfig kubeschedulerconfig.KubeSchedulerConfiguration
 
-	InsecureServing        *app.InsecureServingInfo // nil will disable serving on an insecure port
-	InsecureMetricsServing *app.InsecureServingInfo // non-nil if metrics should be served independently
+	// LoopbackClientConfig is a config for a privileged loopback connection
+	LoopbackClientConfig *restclient.Config
+
+	InsecureServing        *apiserver.DeprecatedInsecureServingInfo // nil will disable serving on an insecure port
+	InsecureMetricsServing *apiserver.DeprecatedInsecureServingInfo // non-nil if metrics should be served independently
 	Authentication         apiserver.AuthenticationInfo
 	Authorization          apiserver.AuthorizationInfo
 	SecureServing          *apiserver.SecureServingInfo
@@ -42,9 +47,14 @@ type Config struct {
 	Client          clientset.Interface
 	InformerFactory informers.SharedInformerFactory
 	PodInformer     coreinformers.PodInformer
-	EventClient     v1core.EventsGetter
-	Recorder        record.EventRecorder
-	Broadcaster     record.EventBroadcaster
+
+	// TODO: Remove the following after fully migrating to the new events api.
+	CoreEventClient v1core.EventsGetter
+	CoreBroadcaster record.EventBroadcaster
+
+	EventClient v1beta1.EventsGetter
+	Recorder    events.EventRecorder
+	Broadcaster events.EventBroadcaster
 
 	// LeaderElection is optional.
 	LeaderElection *leaderelection.LeaderElectionConfig
@@ -70,6 +80,8 @@ func (c *Config) Complete() CompletedConfig {
 	if c.InsecureMetricsServing != nil {
 		c.InsecureMetricsServing.Name = "metrics"
 	}
+
+	apiserver.AuthorizeClientBearerToken(c.LoopbackClientConfig, &c.Authentication, &c.Authorization)
 
 	return CompletedConfig{&cc}
 }

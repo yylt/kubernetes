@@ -186,7 +186,7 @@ func (t *Table) Delete(timeout uint, options *TableOptions) error {
 	if err != nil {
 		return err
 	}
-	defer readAndCloseBody(resp.Body)
+	defer drainRespBody(resp)
 
 	return checkRespCode(resp, []int{http.StatusNoContent})
 }
@@ -269,7 +269,7 @@ func (t *Table) SetPermissions(tap []TableAccessPolicy, timeout uint, options *T
 	if err != nil {
 		return err
 	}
-	defer readAndCloseBody(resp.Body)
+	defer drainRespBody(resp)
 
 	return checkRespCode(resp, []int{http.StatusNoContent})
 }
@@ -355,8 +355,12 @@ func (t *Table) queryEntities(uri string, headers map[string]string, ml Metadata
 			return nil, err
 		}
 		v := originalURI.Query()
-		v.Set(nextPartitionKeyQueryParameter, contToken.NextPartitionKey)
-		v.Set(nextRowKeyQueryParameter, contToken.NextRowKey)
+		if contToken.NextPartitionKey != "" {
+			v.Set(nextPartitionKeyQueryParameter, contToken.NextPartitionKey)
+		}
+		if contToken.NextRowKey != "" {
+			v.Set(nextRowKeyQueryParameter, contToken.NextRowKey)
+		}
 		newURI := t.tsc.client.getEndpoint(tableServiceName, t.buildPath(), v)
 		entities.NextLink = &newURI
 		entities.ml = ml
@@ -371,7 +375,7 @@ func extractContinuationTokenFromHeaders(h http.Header) *continuationToken {
 		NextRowKey:       h.Get(headerNextRowKey),
 	}
 
-	if ct.NextPartitionKey != "" && ct.NextRowKey != "" {
+	if ct.NextPartitionKey != "" || ct.NextRowKey != "" {
 		return &ct
 	}
 	return nil

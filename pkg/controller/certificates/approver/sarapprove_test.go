@@ -27,7 +27,7 @@ import (
 	"net"
 	"testing"
 
-	authorization "k8s.io/api/authorization/v1beta1"
+	authorization "k8s.io/api/authorization/v1"
 	capi "k8s.io/api/certificates/v1beta1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -86,7 +86,6 @@ func TestHasKubeletUsages(t *testing.T) {
 
 func TestHandle(t *testing.T) {
 	cases := []struct {
-		message    string
 		allowed    bool
 		recognized bool
 		err        bool
@@ -273,7 +272,7 @@ type csrBuilder struct {
 }
 
 func makeFancyTestCsr(b csrBuilder) *capi.CertificateSigningRequest {
-	pk, err := ecdsa.GenerateKey(elliptic.P224(), insecureRand)
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), insecureRand)
 	if err != nil {
 		panic(err)
 	}

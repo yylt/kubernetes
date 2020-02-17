@@ -20,6 +20,8 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/pkg/errors"
+
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -61,11 +63,11 @@ func NewClientBackedDryRunGetter(config *rest.Config) (*ClientBackedDryRunGetter
 func NewClientBackedDryRunGetterFromKubeconfig(file string) (*ClientBackedDryRunGetter, error) {
 	config, err := clientcmd.LoadFromFile(file)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load kubeconfig: %v", err)
+		return nil, errors.Wrap(err, "failed to load kubeconfig")
 	}
 	clientConfig, err := clientcmd.NewDefaultClientConfig(*config, &clientcmd.ConfigOverrides{}).ClientConfig()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create API client configuration from kubeconfig: %v", err)
+		return nil, errors.Wrap(err, "failed to create API client configuration from kubeconfig")
 	}
 	return NewClientBackedDryRunGetter(clientConfig)
 }
@@ -111,7 +113,7 @@ func (clg *ClientBackedDryRunGetter) Client() clientset.Interface {
 }
 
 // decodeUnversionedIntoAPIObject converts the *unversioned.Unversioned object returned from the dynamic client
-// to bytes; and then decodes it back _to an external api version (k8s.io/api vs k8s.io/kubernetes/pkg/api*)_ using the normal API machinery
+// to bytes; and then decodes it back _to an external api version (k8s.io/api)_ using the normal API machinery
 func decodeUnstructuredIntoAPIObject(action core.Action, unstructuredObj runtime.Unstructured) (runtime.Object, error) {
 	objBytes, err := json.Marshal(unstructuredObj)
 	if err != nil {
