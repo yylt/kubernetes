@@ -145,6 +145,8 @@ type NodeAllocatableConfig struct {
 	KubeReservedCgroupName   string
 	SystemReservedCgroupName string
 	ReservedSystemCPUs       cpuset.CPUSet
+	KubePodsCpusetCpus   string
+	KubePodsCpusetMems   string
 	EnforceNodeAllocatable   sets.String
 	KubeReserved             v1.ResourceList
 	SystemReserved           v1.ResourceList
