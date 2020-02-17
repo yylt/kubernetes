@@ -369,6 +369,12 @@ type KubeletConfiguration struct {
 	// Currently only cpu, memory and local ephemeral storage for root file system are supported.
 	// See http://kubernetes.io/docs/user-guide/compute-resources for more detail.
 	KubeReserved map[string]string
+	// Reserved cpuset.cpus for cgroup kubepods
+	// CPUs in which to allow execution (0-3, 0,1)
+	KubePodsCpusetCpus string
+	// Reserved cpuset.mems for cgroup kubepods
+	// MEMs in which to allow execution (0-3, 0,1)
+	KubePodsCpusetMems string
 	// This flag helps kubelet identify absolute name of top level cgroup used to enforce `SystemReserved` compute resource reservation for OS system daemons.
 	// Refer to [Node Allocatable](https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#node-allocatable) doc for more information.
 	SystemReservedCgroup string

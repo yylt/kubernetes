@@ -636,6 +636,12 @@ type KubeletConfiguration struct {
 	// Default: ""
 	// +optional
 	ShowHiddenMetricsForVersion string `json:"showHiddenMetricsForVersion,omitempty"`
+	// Reserved cpuset.cpus for cgroup kubepods
+	// CPUs in which to allow execution (0-3, 0,1)
+	KubePodsCpusetCpus string
+	// Reserved cpuset.mems for cgroup kubepods
+	// MEMs in which to allow execution (0-3, 0,1)
+	KubePodsCpusetMems string
 	// systemReservedCgroup helps the kubelet identify absolute name of top level CGroup used
 	// to enforce `systemReserved` compute resource reservation for OS system daemons.
 	// Refer to [Node Allocatable](https://kubernetes.io/docs/tasks/administer-cluster/reserve-compute-resources/#node-allocatable)

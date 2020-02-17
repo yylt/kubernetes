@@ -379,6 +379,12 @@ func (m *cgroupManagerImpl) toResources(resourceConfig *ResourceConfig) *libcont
 	if resourceConfig.PidsLimit != nil {
 		resources.PidsLimit = *resourceConfig.PidsLimit
 	}
+	if resourceConfig.CpusetCpus != nil {
+		resources.CpusetCpus = *resourceConfig.CpusetCpus
+	}
+	if resourceConfig.CpusetMems != nil {
+		resources.CpusetMems = *resourceConfig.CpusetMems
+	}
 
 	m.maybeSetHugetlb(resourceConfig, resources)
 
@@ -405,8 +411,8 @@ func (m *cgroupManagerImpl) maybeSetHugetlb(resourceConfig *ResourceConfig, reso
 		klog.V(6).InfoS("Optional subsystem not supported: hugetlb")
 		return
 	}
-
-	// For each page size enumerated, set that value.
+	// if huge pages are enabled, we set them in libcontainer
+	// for each page size enumerated, set that value
 	pageSizes := sets.NewString()
 	for pageSize, limit := range resourceConfig.HugePageLimit {
 		sizeString, err := v1helper.HugePageUnitSizeFromByteSize(pageSize)
