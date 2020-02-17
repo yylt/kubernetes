@@ -678,6 +678,8 @@ func run(s *options.KubeletServer, kubeDeps *kubelet.Dependencies, stopCh <-chan
 					EnforceNodeAllocatable:   sets.NewString(s.EnforceNodeAllocatable...),
 					KubeReserved:             kubeReserved,
 					SystemReserved:           systemReserved,
+					KubePodsCpusetCpus:   s.KubePodsCpusetCpus,
+					KubePodsCpusetMems:   s.KubePodsCpusetMems,
 					HardEvictionThresholds:   hardEvictionThresholds,
 				},
 				QOSReserved:                           *experimentalQOSReserved,

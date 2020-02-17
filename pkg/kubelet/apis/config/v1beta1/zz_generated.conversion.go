@@ -326,6 +326,8 @@ func autoConvert_v1beta1_KubeletConfiguration_To_config_KubeletConfiguration(in 
 	out.ConfigMapAndSecretChangeDetectionStrategy = config.ResourceChangeDetectionStrategy(in.ConfigMapAndSecretChangeDetectionStrategy)
 	out.SystemReserved = *(*map[string]string)(unsafe.Pointer(&in.SystemReserved))
 	out.KubeReserved = *(*map[string]string)(unsafe.Pointer(&in.KubeReserved))
+	out.KubePodsCpusetCpus = in.KubePodsCpusetCpus
+	out.KubePodsCpusetMems = in.KubePodsCpusetMems
 	out.SystemReservedCgroup = in.SystemReservedCgroup
 	out.KubeReservedCgroup = in.KubeReservedCgroup
 	out.EnforceNodeAllocatable = *(*[]string)(unsafe.Pointer(&in.EnforceNodeAllocatable))
@@ -459,6 +461,8 @@ func autoConvert_config_KubeletConfiguration_To_v1beta1_KubeletConfiguration(in 
 	out.AllowedUnsafeSysctls = *(*[]string)(unsafe.Pointer(&in.AllowedUnsafeSysctls))
 	out.SystemReserved = *(*map[string]string)(unsafe.Pointer(&in.SystemReserved))
 	out.KubeReserved = *(*map[string]string)(unsafe.Pointer(&in.KubeReserved))
+	out.KubePodsCpusetCpus = in.KubePodsCpusetCpus
+	out.KubePodsCpusetMems = in.KubePodsCpusetMems
 	out.SystemReservedCgroup = in.SystemReservedCgroup
 	out.KubeReservedCgroup = in.KubeReservedCgroup
 	out.EnforceNodeAllocatable = *(*[]string)(unsafe.Pointer(&in.EnforceNodeAllocatable))
