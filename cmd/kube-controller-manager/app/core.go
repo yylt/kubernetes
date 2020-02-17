@@ -340,6 +340,14 @@ func startAttachDetachController(ctx ControllerContext) (http.Handler, bool, err
 		return nil, true, err
 	}
 
+    timeConfig := attachdetach.DefaultTimerConfig
+    optionMaxWaitForUnmountDuration := ctx.ComponentConfig.AttachDetachController.ReconcilerMaxWaitForUnmountDuration.Duration
+    if optionMaxWaitForUnmountDuration != 0 {
+    	if optionMaxWaitForUnmountDuration < time.Minute {
+    		return nil, true, fmt.Errorf("MaxWaitForUnmountDuration must be greater than one minute as set via command line option attach-detach-reconcile-max-wait-unmount-duration.")
+    	}
+    	timeConfig.ReconcilerMaxWaitForUnmountDuration = optionMaxWaitForUnmountDuration
+    }
 	attachDetachController, attachDetachControllerErr :=
 		attachdetach.NewAttachDetachController(
 			ctx.ClientBuilder.ClientOrDie("attachdetach-controller"),
@@ -355,7 +363,7 @@ func startAttachDetachController(ctx ControllerContext) (http.Handler, bool, err
 			GetDynamicPluginProber(ctx.ComponentConfig.PersistentVolumeBinderController.VolumeConfiguration),
 			ctx.ComponentConfig.AttachDetachController.DisableAttachDetachReconcilerSync,
 			ctx.ComponentConfig.AttachDetachController.ReconcilerSyncLoopPeriod.Duration,
-			attachdetach.DefaultTimerConfig,
+	        timeConfig,
 			filteredDialOptions,
 		)
 	if attachDetachControllerErr != nil {
