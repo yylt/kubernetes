@@ -40,7 +40,7 @@ func SetDefaults_Job(obj *batchv1.Job) {
 	}
 	if obj.Spec.BackoffLimit == nil {
 		obj.Spec.BackoffLimit = new(int32)
-		*obj.Spec.BackoffLimit = 6
+		*obj.Spec.BackoffLimit = 128
 	}
 	labels := obj.Spec.Template.Labels
 	if labels != nil && len(obj.Labels) == 0 {
