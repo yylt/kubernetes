@@ -103,6 +103,97 @@ func HashContainer(container *v1.Container) uint64 {
 	return uint64(hash.Sum32())
 }
 
+
+// LegacyHashContainer returns the hash of the container. It is used to compare
+// the running container with its desired spec by algorithm in v1.9.8.
+func LegacyHashContainer(container *v1.Container) uint64 {
+	hash := fnv.New32a()
+        legacyContainer := toLegacyContainer(container)
+
+	hashutil.LegacyDeepHashObject(hash, *legacyContainer)
+	return uint64(hash.Sum32())
+}
+
+// toLegacyContainer convert Container object from new release to legacy release
+// to keep container hash value not changed when to upgrade
+func toLegacyContainer(container *v1.Container) *v1.LegacyContainer {
+	var legacySC v1.LegacySecurityContext
+	var legacyVM []v1.LegacyVolumeMount
+	var legacyContainer v1.LegacyContainer
+	if len(container.VolumeMounts) != 0{
+		for _, v := range container.VolumeMounts {
+			lvm := v1.LegacyVolumeMount{
+				Name: v.Name,
+                                ReadOnly: v.ReadOnly,
+                                MountPath: v.MountPath,
+                                SubPath: v.SubPath,
+                                MountPropagation: v.MountPropagation,
+			}
+			legacyVM = append(legacyVM, lvm)
+		}
+	}
+	if container.SecurityContext != nil {
+		legacySC = v1.LegacySecurityContext{
+			Capabilities: container.SecurityContext.Capabilities,
+			Privileged: container.SecurityContext.Privileged,
+			SELinuxOptions: container.SecurityContext.SELinuxOptions,
+			RunAsUser: container.SecurityContext.RunAsUser,
+			RunAsNonRoot: container.SecurityContext.RunAsNonRoot,
+			ReadOnlyRootFilesystem: container.SecurityContext.ReadOnlyRootFilesystem,
+			AllowPrivilegeEscalation: container.SecurityContext.AllowPrivilegeEscalation,
+		}
+		legacyContainer = v1.LegacyContainer{
+			Name: container.Name,
+			Image: container.Image,
+			Command: container.Command,
+			Args: container.Args,
+			WorkingDir: container.WorkingDir,
+			Ports: container.Ports,
+			EnvFrom: container.EnvFrom,
+			Env: container.Env,
+			Resources: container.Resources,
+			VolumeMounts: legacyVM,
+			VolumeDevices: container.VolumeDevices,
+			LivenessProbe: container.LivenessProbe,
+			ReadinessProbe: container.ReadinessProbe,
+			Lifecycle: container.Lifecycle,
+			TerminationMessagePath: container.TerminationMessagePath,
+			TerminationMessagePolicy: container.TerminationMessagePolicy,
+			ImagePullPolicy: container.ImagePullPolicy,
+			SecurityContext: &legacySC,
+			Stdin: container.Stdin,
+			StdinOnce: container.StdinOnce,
+			TTY: container.TTY,
+		}
+	} else {
+		legacyContainer = v1.LegacyContainer{
+			Name: container.Name,
+			Image: container.Image,
+			Command: container.Command,
+			Args: container.Args,
+			WorkingDir: container.WorkingDir,
+			Ports: container.Ports,
+			EnvFrom: container.EnvFrom,
+			Env: container.Env,
+			Resources: container.Resources,
+			VolumeMounts: legacyVM,
+			VolumeDevices: container.VolumeDevices,
+			LivenessProbe: container.LivenessProbe,
+			ReadinessProbe: container.ReadinessProbe,
+			Lifecycle: container.Lifecycle,
+			TerminationMessagePath: container.TerminationMessagePath,
+			TerminationMessagePolicy: container.TerminationMessagePolicy,
+			ImagePullPolicy: container.ImagePullPolicy,
+			Stdin: container.Stdin,
+			StdinOnce: container.StdinOnce,
+			TTY: container.TTY,
+		}
+	}
+
+	return &legacyContainer
+}
+
+
 // EnvVarsToMap constructs a map of environment name to value from a slice
 // of env vars.
 func EnvVarsToMap(envs []EnvVar) map[string]string {

@@ -445,7 +445,8 @@ func (m *kubeGenericRuntimeManager) podSandboxChanged(pod *v1.Pod, podStatus *ku
 
 func containerChanged(container *v1.Container, containerStatus *kubecontainer.ContainerStatus) (uint64, uint64, bool) {
 	expectedHash := kubecontainer.HashContainer(container)
-	return expectedHash, containerStatus.Hash, containerStatus.Hash != expectedHash
+	legacyHash := kubecontainer.LegacyHashContainer(container)
+	return expectedHash, containerStatus.Hash, containerStatus.Hash != expectedHash && containerStatus.Hash != legacyHash
 }
 
 func shouldRestartOnFailure(pod *v1.Pod) bool {
