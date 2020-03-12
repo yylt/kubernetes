@@ -1667,6 +1667,29 @@ type ContainerPort struct {
 	HostIP string
 }
 
+// VolumeMount in version v1.9.8
+type LegacyVolumeMount struct {
+	// Required: This must match the Name of a Volume [above].
+	Name string
+	// Optional: Defaults to false (read-write).
+	// +optional
+	ReadOnly bool
+	// Required. If the path is not an absolute path (e.g. some/path) it
+	// will be prepended with the appropriate root prefix for the operating
+	// system.  On Linux this is '/', on Windows this is 'C:\'.
+	MountPath string
+	// Path within the volume from which the container's volume should be mounted.
+	// Defaults to "" (volume's root).
+	// +optional
+	SubPath string
+	// mountPropagation determines how mounts are propagated from the host
+	// to container and the other way around.
+	// When not set, MountPropagationNone is used.
+	// This field is beta in 1.10.
+	// +optional
+	MountPropagation *MountPropagationMode
+}
+
 // VolumeMount describes a mounting of a Volume within a container.
 type VolumeMount struct {
 	// Required: This must match the Name of a Volume [above].
@@ -2056,6 +2079,79 @@ type Container struct {
 	// If set, the fields of SecurityContext override the equivalent fields of PodSecurityContext.
 	// +optional
 	SecurityContext *SecurityContext
+
+	// Variables for interactive containers, these have very specialized use-cases (e.g. debugging)
+	// and shouldn't be used for general purpose containers.
+	// +optional
+	Stdin bool
+	// +optional
+	StdinOnce bool
+	// +optional
+	TTY bool
+}
+
+// Container in version v1.9.8
+type LegacyContainer struct {
+	// Required: This must be a DNS_LABEL.  Each container in a pod must
+	// have a unique name.
+	Name string
+	// Required.
+	Image string
+	// Optional: The docker image's entrypoint is used if this is not provided; cannot be updated.
+	// Variable references $(VAR_NAME) are expanded using the container's environment.  If a variable
+	// cannot be resolved, the reference in the input string will be unchanged.  The $(VAR_NAME) syntax
+	// can be escaped with a double $$, ie: $$(VAR_NAME).  Escaped references will never be expanded,
+	// regardless of whether the variable exists or not.
+	// +optional
+	Command []string
+	// Optional: The docker image's cmd is used if this is not provided; cannot be updated.
+	// Variable references $(VAR_NAME) are expanded using the container's environment.  If a variable
+	// cannot be resolved, the reference in the input string will be unchanged.  The $(VAR_NAME) syntax
+	// can be escaped with a double $$, ie: $$(VAR_NAME).  Escaped references will never be expanded,
+	// regardless of whether the variable exists or not.
+	// +optional
+	Args []string
+	// Optional: Defaults to Docker's default.
+	// +optional
+	WorkingDir string
+	// +optional
+	Ports []ContainerPort
+	// List of sources to populate environment variables in the container.
+	// The keys defined within a source must be a C_IDENTIFIER. All invalid keys
+	// will be reported as an event when the container is starting. When a key exists in multiple
+	// sources, the value associated with the last source will take precedence.
+	// Values defined by an Env with a duplicate key will take precedence.
+	// Cannot be updated.
+	// +optional
+	EnvFrom []EnvFromSource
+	// +optional
+	Env []EnvVar
+	// Compute resource requirements.
+	// +optional
+	Resources ResourceRequirements
+	// +optional
+	VolumeMounts []LegacyVolumeMount
+	// volumeDevices is the list of block devices to be used by the container.
+	// This is a beta feature.
+	// +optional
+	VolumeDevices []VolumeDevice
+	// +optional
+	LivenessProbe *Probe
+	// +optional
+	ReadinessProbe *Probe
+	// +optional
+	Lifecycle *Lifecycle
+	// Required.
+	// +optional
+	TerminationMessagePath string
+	// +optional
+	TerminationMessagePolicy TerminationMessagePolicy
+	// Required: Policy for pulling images for this container
+	ImagePullPolicy PullPolicy
+	// Optional: SecurityContext defines the security options the container should be run with.
+	// If set, the fields of SecurityContext override the equivalent fields of PodSecurityContext.
+	// +optional
+	SecurityContext *LegacySecurityContext
 
 	// Variables for interactive containers, these have very specialized use-cases (e.g. debugging)
 	// and shouldn't be used for general purpose containers.
@@ -4879,6 +4975,48 @@ type ComponentStatusList struct {
 	metav1.ListMeta
 
 	Items []ComponentStatus
+}
+
+// SecurityContext in version v1.9.8
+type LegacySecurityContext struct {
+	// The capabilities to add/drop when running containers.
+	// Defaults to the default set of capabilities granted by the container runtime.
+	// +optional
+	Capabilities *Capabilities
+	// Run container in privileged mode.
+	// Processes in privileged containers are essentially equivalent to root on the host.
+	// Defaults to false.
+	// +optional
+	Privileged *bool
+	// The SELinux context to be applied to the container.
+	// If unspecified, the container runtime will allocate a random SELinux context for each
+	// container.  May also be set in PodSecurityContext.  If set in both SecurityContext and
+	// PodSecurityContext, the value specified in SecurityContext takes precedence.
+	// +optional
+	SELinuxOptions *SELinuxOptions
+	// The UID to run the entrypoint of the container process.
+	// Defaults to user specified in image metadata if unspecified.
+	// May also be set in PodSecurityContext.  If set in both SecurityContext and
+	// PodSecurityContext, the value specified in SecurityContext takes precedence.
+	// +optional
+	RunAsUser *int64
+	// Indicates that the container must run as a non-root user.
+	// If true, the Kubelet will validate the image at runtime to ensure that it
+	// does not run as UID 0 (root) and fail to start the container if it does.
+	// If unset or false, no such validation will be performed.
+	// May also be set in PodSecurityContext.  If set in both SecurityContext and
+	// PodSecurityContext, the value specified in SecurityContext takes precedence.
+	// +optional
+	RunAsNonRoot *bool
+	// The read-only root filesystem allows you to restrict the locations that an application can write
+	// files to, ensuring the persistent data can only be written to mounts.
+	// +optional
+	ReadOnlyRootFilesystem *bool
+	// AllowPrivilegeEscalation controls whether a process can gain more
+	// privileges than its parent process. This bool directly controls if
+	// the no_new_privs flag will be set on the container process.
+	// +optional
+	AllowPrivilegeEscalation *bool
 }
 
 // SecurityContext holds security configuration that will be applied to a container.

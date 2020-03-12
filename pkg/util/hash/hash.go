@@ -18,6 +18,7 @@ package hash
 
 import (
 	"hash"
+	"regexp"
 
 	"github.com/davecgh/go-spew/spew"
 )
@@ -34,4 +35,28 @@ func DeepHashObject(hasher hash.Hash, objectToWrite interface{}) {
 		SpewKeys:       true,
 	}
 	printer.Fprintf(hasher, "%#v", objectToWrite)
+}
+
+// LegacyDeepHashObject writes specified object to hash using the spew library
+// which follows pointers and prints actual values of the nested objects
+// ensuring the hash does not change when a pointer changes.
+// LegacyDeepHashObject differs from DeepHashObject in this:
+// It use spew's formatter to get the LegacyContainer string, replace Legacy
+// strings and then write the result to hasher.
+func LegacyDeepHashObject(hasher hash.Hash, objectToWrite interface{}) {
+	hasher.Reset()
+	printer := spew.ConfigState{
+		Indent:         " ",
+		SortKeys:       true,
+		DisableMethods: true,
+		SpewKeys:       true,
+	}
+	s := printer.Sprintf("%#v", objectToWrite)
+	re, _ := regexp.Compile("LegacyContainer")
+	s = re.ReplaceAllString(s, "Container")
+	re, _ = regexp.Compile("LegacySecurityContext")
+	s = re.ReplaceAllString(s, "SecurityContext")
+	re, _ = regexp.Compile("LegacyVolumeMount")
+	s = re.ReplaceAllString(s, "VolumeMount")
+	hasher.Write([]byte(s))
 }
