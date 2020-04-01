@@ -168,10 +168,60 @@ func (h *HumanReadablePrinter) PrintObj(obj runtime.Object, output io.Writer) er
 	return nil
 }
 
+func podHide(tableRow *metav1beta1.TableRow, podStatusIndex int, showAll bool) bool {
+	status, ok := tableRow.Cells[podStatusIndex].(string)
+	if !ok {
+		return false
+	}
+
+	if !showAll && (status == "Completed" || status == "Evicted") {
+		return true
+	}
+	return false
+}
+
+func isPodResource(options PrintOptions) bool {
+	resourceType := strings.ToLower(options.Kind.String())
+	if resourceType == "pod" {
+		return true
+	}
+	return false
+}
+
+func getPodStatusIndex(table *metav1beta1.Table) int {
+	index := 0
+	for i, column := range table.ColumnDefinitions {
+		if column.Name == "Status" {
+			index = i
+			break
+		}
+	}
+	return index
+}
+
 // printTable prints a table to the provided output respecting the filtering rules for options
 // for wide columns and filtered rows. It filters out rows that are Completed. You should call
 // decorateTable if you receive a table from a remote server before calling printTable.
 func printTable(table *metav1beta1.Table, output io.Writer, options PrintOptions) error {
+	var podStatusIndex int
+	resourceIsPod := false
+
+	if isPodResource(options) {
+		resourceIsPod = true
+		podStatusIndex = getPodStatusIndex(table)
+
+		count := 0
+		for _, row := range table.Rows {
+			if podHide(&row, podStatusIndex, options.ShowAll) {
+				count++
+			}
+		}
+
+		if count == len(table.Rows) {
+			return nil
+		}
+	}
+
 	if !options.NoHeaders {
 		// avoid printing headers if we have no rows to display
 		if len(table.Rows) == 0 {
@@ -193,6 +243,12 @@ func printTable(table *metav1beta1.Table, output io.Writer, options PrintOptions
 		fmt.Fprintln(output)
 	}
 	for _, row := range table.Rows {
+		if resourceIsPod {
+			if podHide(&row, podStatusIndex, options.ShowAll) {
+				continue
+			}
+		}
+
 		first := true
 		for i, cell := range row.Cells {
 			if i >= len(table.ColumnDefinitions) {

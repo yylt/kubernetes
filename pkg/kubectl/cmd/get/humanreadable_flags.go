@@ -38,6 +38,7 @@ type HumanPrintFlags struct {
 
 	Kind          schema.GroupKind
 	WithNamespace bool
+	ShowAll       *bool
 }
 
 // SetKind sets the Kind option
@@ -63,6 +64,13 @@ func (f *HumanPrintFlags) AllowedFormats() []string {
 	return []string{"wide"}
 }
 
+// AllowedShowAll ebable show all pods
+func (f *HumanPrintFlags) AllowedShowAll() error {
+	showAll := true
+	f.ShowAll = &showAll
+	return nil
+}
+
 // ToPrinter receives an outputFormat and returns a printer capable of
 // handling human-readable output.
 func (f *HumanPrintFlags) ToPrinter(outputFormat string) (printers.ResourcePrinter, error) {
@@ -85,6 +93,11 @@ func (f *HumanPrintFlags) ToPrinter(outputFormat string) (printers.ResourcePrint
 		columnLabels = *f.ColumnLabels
 	}
 
+	showAll := false
+	if f.ShowAll != nil {
+		showAll = *f.ShowAll
+	}
+
 	p := printers.NewTablePrinter(printers.PrintOptions{
 		Kind:          f.Kind,
 		WithKind:      showKind,
@@ -93,6 +106,7 @@ func (f *HumanPrintFlags) ToPrinter(outputFormat string) (printers.ResourcePrint
 		WithNamespace: f.WithNamespace,
 		ColumnLabels:  columnLabels,
 		ShowLabels:    showLabels,
+		ShowAll:       showAll,
 	})
 
 	// TODO(juanvallejo): handle sorting here
@@ -115,6 +129,9 @@ func (f *HumanPrintFlags) AddFlags(c *cobra.Command) {
 	if f.ShowKind != nil {
 		c.Flags().BoolVar(f.ShowKind, "show-kind", *f.ShowKind, "If present, list the resource type for the requested object(s).")
 	}
+	if f.ShowAll != nil {
+		c.Flags().BoolVarP(f.ShowAll, "show-all", "a", *f.ShowAll, "If true, show all pods include Completed and Evicted pod.")
+	}
 }
 
 // NewHumanPrintFlags returns flags associated with
@@ -124,6 +141,7 @@ func NewHumanPrintFlags() *HumanPrintFlags {
 	sortBy := ""
 	showKind := false
 	columnLabels := []string{}
+	showAll := false
 
 	return &HumanPrintFlags{
 		NoHeaders:     false,
@@ -134,5 +152,6 @@ func NewHumanPrintFlags() *HumanPrintFlags {
 		ShowLabels: &showLabels,
 		SortBy:     &sortBy,
 		ShowKind:   &showKind,
+		ShowAll:    &showAll,
 	}
 }

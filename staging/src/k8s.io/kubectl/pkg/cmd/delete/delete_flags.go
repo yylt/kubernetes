@@ -159,7 +159,7 @@ func NewDeleteCommandFlags(usage string) *DeleteFlags {
 	labelSelector := ""
 	fieldSelector := ""
 	timeout := time.Duration(0)
-	wait := true
+	wait := false
 	raw := ""
 
 	filenames := []string{}
