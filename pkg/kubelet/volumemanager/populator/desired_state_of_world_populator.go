@@ -258,13 +258,14 @@ func (dswp *desiredStateOfWorldPopulator) findAndRemoveDeletedPods() {
 				format.Pod(volumeToMount.Pod))
 			continue
 		}
-		exists, _, _ := dswp.actualStateOfWorld.PodExistsInVolume(volumeToMount.PodName, volumeToMount.VolumeName)
+		exists := dswp.actualStateOfWorld.IsVolumeBindMounted(volumeToMount.VolumeName, volumetypes.UniquePodName(volumeToMount.Pod.UID))
 		if !exists && podExists {
 			klog.V(4).Infof(
 				volumeToMount.GenerateMsgDetailed(fmt.Sprintf("Actual state has not yet has this volume mounted information and pod (%q) still exists in pod manager, skip removing volume from desired state",
 					format.Pod(volumeToMount.Pod)), ""))
 			continue
 		}
+
 		klog.V(4).Infof(volumeToMount.GenerateMsgDetailed("Removing volume from desired state", ""))
 
 		dswp.desiredStateOfWorld.DeletePodFromVolume(

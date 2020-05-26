@@ -76,6 +76,9 @@ type ActualStateOfWorld interface {
 	// attached volumes, an error is returned.
 	SetVolumeGloballyMounted(volumeName v1.UniqueVolumeName, globallyMounted bool, devicePath, deviceMountPath string) error
 
+	// IsVolumeBindMounted return false if a volume has not been bind mounted yet
+	IsVolumeBindMounted(volumeName v1.UniqueVolumeName, podName volumetypes.UniquePodName) bool
+
 	// DeletePodFromVolume removes the given pod from the given volume in the
 	// cache indicating the volume has been successfully unmounted from the pod.
 	// If a pod with the same unique name does not exist under the specified
@@ -577,6 +580,25 @@ func (asw *actualStateOfWorld) SetVolumeGloballyMounted(
 	}
 	asw.attachedVolumes[volumeName] = volumeObj
 	return nil
+}
+
+func (asw *actualStateOfWorld) IsVolumeBindMounted(
+	volumeName v1.UniqueVolumeName, podName volumetypes.UniquePodName) bool {
+	asw.Lock()
+	defer asw.Unlock()
+	volumeObj, volumeExists := asw.attachedVolumes[volumeName]
+	if !volumeExists {
+		 klog.V(4).Infof(
+			"no volume with the name %q exists in the list of attached volumes when check volume is bind mounted",
+			volumeName)
+		 return false
+	}
+	_, podExists := volumeObj.mountedPods[podName]
+	if podExists {
+		return true
+	} else {
+		return false
+	}
 }
 
 func (asw *actualStateOfWorld) DeletePodFromVolume(
