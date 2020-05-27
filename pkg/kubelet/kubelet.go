@@ -32,6 +32,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"k8s.io/client-go/informers"
+
 	cadvisorapi "github.com/google/cadvisor/info/v1"
 	v1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -445,13 +447,18 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 		PodCgroupRoot:            kubeDeps.ContainerManager.GetPodCgroupRoot(),
 	}
 
-	serviceIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	var serviceLister corelisters.ServiceLister
+	var serviceHasSynced cache.InformerSynced
 	if kubeDeps.KubeClient != nil {
-		serviceLW := cache.NewListWatchFromClient(kubeDeps.KubeClient.CoreV1().RESTClient(), "services", metav1.NamespaceAll, fields.Everything())
-		r := cache.NewReflector(serviceLW, &v1.Service{}, serviceIndexer, 0)
-		go r.Run(wait.NeverStop)
+		kubeInformers := informers.NewSharedInformerFactory(kubeDeps.KubeClient, 0)
+		serviceLister = kubeInformers.Core().V1().Services().Lister()
+		serviceHasSynced = kubeInformers.Core().V1().Services().Informer().HasSynced
+		kubeInformers.Start(wait.NeverStop)
+	} else {
+		serviceIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+		serviceLister = corelisters.NewServiceLister(serviceIndexer)
+		serviceHasSynced = func() bool { return true }
 	}
-	serviceLister := corelisters.NewServiceLister(serviceIndexer)
 
 	nodeIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 	if kubeDeps.KubeClient != nil {
@@ -509,6 +516,7 @@ func NewMainKubelet(kubeCfg *kubeletconfiginternal.KubeletConfiguration,
 		dnsConfigurer:                           dns.NewConfigurer(kubeDeps.Recorder, nodeRef, parsedNodeIP, clusterDNS, kubeCfg.ClusterDomain, kubeCfg.ResolverConfig),
 		serviceLister:                           serviceLister,
 		nodeInfo:                                nodeInfo,
+		serviceHasSynced:                        serviceHasSynced,
 		masterServiceNamespace:                  masterServiceNamespace,
 		streamingConnectionIdleTimeout:          kubeCfg.StreamingConnectionIdleTimeout.Duration,
 		recorder:                                kubeDeps.Recorder,
@@ -963,6 +971,9 @@ type Kubelet struct {
 	serviceLister serviceLister
 	// nodeInfo knows how to get information about the node for this kubelet.
 	nodeInfo predicates.NodeInfo
+	// serviceHasSynced indicates whether services have been sync'd at least once.
+	// Check this before trusting a response from the lister.
+	serviceHasSynced cache.InformerSynced
 
 	// a list of node labels to register
 	nodeLabels map[string]string
