@@ -75,11 +75,11 @@ func (mounter *Mounter) Mount(source string, target string, fstype string, optio
 	mounterPath := ""
 	bind, bindOpts, bindRemountOpts := MakeBindOpts(options)
 	if bind {
-		err := mounter.doMount(mounterPath, defaultMountCommand, source, target, fstype, bindOpts)
+		err := mounter.doMount(mounterPath, defaultMountCommand, source, target, fstype, bindOpts, true)
 		if err != nil {
 			return err
 		}
-		return mounter.doMount(mounterPath, defaultMountCommand, source, target, fstype, bindRemountOpts)
+		return mounter.doMount(mounterPath, defaultMountCommand, source, target, fstype, bindRemountOpts, true)
 	}
 	// The list of filesystems that require containerized mounter on GCI image cluster
 	fsTypesNeedMounter := map[string]struct{}{
@@ -91,18 +91,43 @@ func (mounter *Mounter) Mount(source string, target string, fstype string, optio
 	if _, ok := fsTypesNeedMounter[fstype]; ok {
 		mounterPath = mounter.mounterPath
 	}
-	return mounter.doMount(mounterPath, defaultMountCommand, source, target, fstype, options)
+	return mounter.doMount(mounterPath, defaultMountCommand, source, target, fstype, options, true)
+}
+
+func (mounter *Mounter) MountWithoutSystemd(source string, target string, fstype string, options []string) error {
+	// Path to mounter binary if containerized mounter is needed. Otherwise, it is set to empty.
+	// All Linux distros are expected to be shipped with a mount utility that a support bind mounts.
+	mounterPath := ""
+	bind, bindOpts, bindRemountOpts := MakeBindOpts(options)
+	if bind {
+		err := mounter.doMount(mounterPath, defaultMountCommand, source, target, fstype, bindOpts, false)
+		if err != nil {
+			return err
+		}
+		return mounter.doMount(mounterPath, defaultMountCommand, source, target, fstype, bindRemountOpts, false)
+	}
+	// The list of filesystems that require containerized mounter on GCI image cluster
+	fsTypesNeedMounter := map[string]struct{}{
+		"nfs":       {},
+		"glusterfs": {},
+		"ceph":      {},
+		"cifs":      {},
+	}
+	if _, ok := fsTypesNeedMounter[fstype]; ok {
+		mounterPath = mounter.mounterPath
+	}
+	return mounter.doMount(mounterPath, defaultMountCommand, source, target, fstype, options, false)
 }
 
 // doMount runs the mount command. mounterPath is the path to mounter binary if containerized mounter is used.
-func (mounter *Mounter) doMount(mounterPath string, mountCmd string, source string, target string, fstype string, options []string) error {
+func (mounter *Mounter) doMount(mounterPath string, mountCmd string, source string, target string, fstype string, options []string, withsystemd bool) error {
 	mountArgs := MakeMountArgs(source, target, fstype, options)
 	if len(mounterPath) > 0 {
 		mountArgs = append([]string{mountCmd}, mountArgs...)
 		mountCmd = mounterPath
 	}
 
-	if mounter.withSystemd {
+	if mounter.withSystemd && withsystemd {
 		// Try to run mount via systemd-run --scope. This will escape the
 		// service where kubelet runs and any fuse daemons will be started in a
 		// specific scope. kubelet service than can be restarted without killing

@@ -276,7 +276,7 @@ func (ed *emptyDir) setupTmpfs(dir string) error {
 	}
 
 	klog.V(3).Infof("pod %v: mounting tmpfs for volume %v", ed.pod.UID, ed.volName)
-	return ed.mounter.Mount("tmpfs", dir, "tmpfs", nil /* options */)
+	return ed.mounter.MountWithoutSystemd("tmpfs", dir, "tmpfs", nil /* options */)
 }
 
 // setupHugepages creates a hugepage mount at the specified directory.
@@ -304,7 +304,7 @@ func (ed *emptyDir) setupHugepages(dir string) error {
 	}
 
 	klog.V(3).Infof("pod %v: mounting hugepages for volume %v", ed.pod.UID, ed.volName)
-	return ed.mounter.Mount("nodev", dir, "hugetlbfs", []string{pageSizeMountOption})
+	return ed.mounter.MountWithoutSystemd("nodev", dir, "hugetlbfs", []string{pageSizeMountOption})
 }
 
 // getPageSizeMountOptionFromPod retrieves pageSize mount option from Pod's resources

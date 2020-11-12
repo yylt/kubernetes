@@ -262,7 +262,7 @@ func (nfsMounter *nfsMounter) SetUpAt(dir string, mounterArgs volume.MounterArgs
 		options = append(options, "ro")
 	}
 	mountOptions := util.JoinMountOptions(nfsMounter.mountOptions, options)
-	err = nfsMounter.mounter.Mount(source, dir, "nfs", mountOptions)
+	err = nfsMounter.mounter.MountWithoutSystemd(source, dir, "nfs", mountOptions)
 	if err != nil {
 		notMnt, mntErr := mount.IsNotMountPoint(nfsMounter.mounter, dir)
 		if mntErr != nil {

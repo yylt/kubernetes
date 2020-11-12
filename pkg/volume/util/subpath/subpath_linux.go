@@ -212,7 +212,7 @@ func doBindSubPath(mounter mount.Interface, subpath Subpath) (hostPath string, e
 	// Do the bind mount
 	options := []string{"bind"}
 	klog.V(5).Infof("bind mounting %q at %q", mountSource, bindPathTarget)
-	if err = mounter.Mount(mountSource, bindPathTarget, "" /*fstype*/, options); err != nil {
+	if err = mounter.MountWithoutSystemd(mountSource, bindPathTarget, "" /*fstype*/, options); err != nil {
 		return "", fmt.Errorf("error mounting %s: %s", subpath.Path, err)
 	}
 	success = true

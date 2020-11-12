@@ -34,6 +34,10 @@ const (
 type Interface interface {
 	// Mount mounts source to target as fstype with given options.
 	Mount(source string, target string, fstype string, options []string) error
+
+	// Mount mounts source to target as fstype with given options and not use systemd-run.
+	MountWithoutSystemd(source string, target string, fstype string, options []string) error
+
 	// Unmount unmounts given target.
 	Unmount(target string) error
 	// List returns a list of all mounted filesystems.  This can be large.
