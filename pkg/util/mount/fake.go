@@ -103,6 +103,10 @@ func (f *FakeMounter) Mount(source string, target string, fstype string, options
 	return nil
 }
 
+func (f *FakeMounter) MountWithoutSystemd(source string, target string, fstype string, options []string) error {
+	return f.Mount(source, target, fstype, options)
+}
+
 // Unmount records the unmount event and updates the in-memory mount points for FakeMounter
 func (f *FakeMounter) Unmount(target string) error {
 	f.mutex.Lock()

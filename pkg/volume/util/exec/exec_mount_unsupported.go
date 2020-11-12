@@ -38,6 +38,11 @@ func (mounter *execMounter) Mount(source string, target string, fstype string, o
 	return nil
 }
 
+// Mount runs mount(8) using given exec interface.
+func (mounter *execMounter) MountWithoutSystemd(source string, target string, fstype string, options []string) error {
+	return nil
+}
+
 func (mounter *execMounter) Unmount(target string) error {
 	return nil
 }

@@ -60,6 +60,21 @@ func (m *execMounter) Mount(source string, target string, fstype string, options
 	return m.doExecMount(source, target, fstype, options)
 }
 
+// Mount runs mount(8) using given exec interface.
+func (m *execMounter) MountWithoutSystemd(source string, target string, fstype string, options []string) error {
+	bind, bindOpts, bindRemountOpts := mount.MakeBindOpts(options)
+
+	if bind {
+		err := m.doExecMount(source, target, fstype, bindOpts)
+		if err != nil {
+			return err
+		}
+		return m.doExecMount(source, target, fstype, bindRemountOpts)
+	}
+
+	return m.doExecMount(source, target, fstype, options)
+}
+
 // doExecMount calls exec(mount <what> <where>) using given exec interface.
 func (m *execMounter) doExecMount(source, target, fstype string, options []string) error {
 	klog.V(5).Infof("Exec Mounting %s %s %s %v", source, target, fstype, options)

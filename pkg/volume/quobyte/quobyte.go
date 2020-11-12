@@ -261,7 +261,7 @@ func (mounter *quobyteMounter) SetUpAt(dir string, mounterArgs volume.MounterArg
 
 	//if a trailing slash is missing we add it here
 	mountOptions := util.JoinMountOptions(mounter.mountOptions, options)
-	if err := mounter.mounter.Mount(mounter.correctTraillingSlash(mounter.registry), dir, "quobyte", mountOptions); err != nil {
+	if err := mounter.mounter.MountWithoutSystemd(mounter.correctTraillingSlash(mounter.registry), dir, "quobyte", mountOptions); err != nil {
 		return fmt.Errorf("quobyte: mount failed: %v", err)
 	}
 
