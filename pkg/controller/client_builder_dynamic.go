@@ -122,8 +122,7 @@ func (t *DynamicControllerClientBuilder) Config(saName string) (*restclient.Conf
 			expirationSeconds:  t.expirationSeconds,
 			leewayPercent:      t.leewayPercent,
 		})
-		configCopy.WrapTransport = transport.TokenSourceWrapTransport(cachedTokenSource)
-
+		configCopy.WrapTransport = transport.ResettableTokenSourceWrapTransport(cachedTokenSource)
 		t.roundTripperFuncMap[saName] = configCopy.WrapTransport
 	}
 
