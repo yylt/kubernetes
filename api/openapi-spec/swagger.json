@@ -5973,9 +5973,6 @@
           "type": "integer"
         }
       },
-      "required": [
-        "names"
-      ],
       "type": "object"
     },
     "io.k8s.api.core.v1.ContainerPort": {
