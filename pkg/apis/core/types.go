@@ -4142,6 +4142,7 @@ type PodSignature struct {
 // ContainerImage describe a container image
 type ContainerImage struct {
 	// Names by which this image is known.
+	// +optional
 	Names []string
 	// The size of the image in bytes.
 	// +optional
