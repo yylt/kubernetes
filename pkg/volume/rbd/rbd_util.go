@@ -22,6 +22,7 @@ limitations under the License.
 package rbd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -32,7 +33,7 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/wait"
@@ -55,6 +56,7 @@ const (
 	rbdImageWatcherFactor    = 1.4
 	rbdImageWatcherSteps     = 10
 	rbdImageSizeUnitMiB      = 1024 * 1024
+	rbdTimeout               = time.Second * 60
 )
 
 // A struct contains rbd image info.
@@ -227,11 +229,13 @@ func execRbdMap(b rbdMounter, rbdCmd string, mon string) ([]byte, error) {
 	// Commandline: rbdCmd map imgPath ...
 	// do not change this format - some tools like rbd-nbd are strict about it.
 	imgPath := fmt.Sprintf("%s/%s", b.Pool, b.Image)
+	ctx, canclefn := context.WithTimeout(context.Background(), rbdTimeout)
+	defer canclefn()
 	if b.Secret != "" {
-		return b.exec.Run(rbdCmd,
+		return b.exec.RunContext(ctx, rbdCmd,
 			"map", imgPath, "--id", b.Id, "-m", mon, "--key="+b.Secret)
 	} else {
-		return b.exec.Run(rbdCmd,
+		return b.exec.RunContext(ctx, rbdCmd,
 			"map", imgPath, "--id", b.Id, "-m", mon, "-k", b.Keyring)
 	}
 }
@@ -482,9 +486,10 @@ func (util *RBDUtil) DetachDisk(plugin *rbdPlugin, deviceMountPath string, devic
 	} else {
 		rbdCmd = "rbd"
 	}
-
+	ctx, canclefn := context.WithTimeout(context.Background(), rbdTimeout)
+	defer canclefn()
 	// rbd unmap
-	output, err := exec.Run(rbdCmd, "unmap", device)
+	output, err := exec.RunContext(ctx, rbdCmd, "unmap", device)
 	if err != nil {
 		return rbdErrors(err, fmt.Errorf("rbd: failed to unmap device %s, error %v, rbd output: %v", device, err, output))
 	}

@@ -17,6 +17,7 @@ limitations under the License.
 package kubelet
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"runtime"
@@ -337,6 +338,12 @@ type containerExec struct {
 var _ mount.Exec = &containerExec{}
 
 func (e *containerExec) Run(cmd string, args ...string) ([]byte, error) {
+	cmdline := append([]string{cmd}, args...)
+	klog.V(5).Infof("Exec mounter running in pod %s/%s/%s: %v", e.pod.Namespace, e.pod.Name, e.containerName, cmdline)
+	return e.kl.RunInContainer(container.GetPodFullName(e.pod), e.pod.UID, e.containerName, cmdline)
+}
+
+func (e *containerExec) RunContext(ctx context.Context, cmd string, args ...string) ([]byte, error) {
 	cmdline := append([]string{cmd}, args...)
 	klog.V(5).Infof("Exec mounter running in pod %s/%s/%s: %v", e.pod.Namespace, e.pod.Name, e.containerName, cmdline)
 	return e.kl.RunInContainer(container.GetPodFullName(e.pod), e.pod.UID, e.containerName, cmdline)

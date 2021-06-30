@@ -20,6 +20,7 @@ limitations under the License.
 package mount
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -62,6 +63,7 @@ type Exec interface {
 	// Run executes a command and returns its stdout + stderr combined in one
 	// stream.
 	Run(cmd string, args ...string) ([]byte, error)
+	RunContext(ctx context.Context, cmd string, args ...string) ([]byte, error)
 }
 
 // Compile-time check to ensure all Mounter implementations satisfy

@@ -16,7 +16,11 @@ limitations under the License.
 
 package mount
 
-import "k8s.io/utils/exec"
+import (
+	"context"
+
+	"k8s.io/utils/exec"
+)
 
 // NewOSExec returns a new Exec interface implementation based on exec()
 func NewOSExec() Exec {
@@ -33,6 +37,11 @@ func (e *osExec) Run(cmd string, args ...string) ([]byte, error) {
 	return exe.Command(cmd, args...).CombinedOutput()
 }
 
+func (e *osExec) RunContext(ctx context.Context, cmd string, args ...string) ([]byte, error) {
+	exe := exec.New()
+	return exe.CommandContext(ctx, cmd, args...).CombinedOutput()
+}
+
 // NewFakeExec returns a new FakeExec
 func NewFakeExec(run runHook) *FakeExec {
 	return &FakeExec{runHook: run}
@@ -46,6 +55,13 @@ type runHook func(cmd string, args ...string) ([]byte, error)
 
 // Run executes the command using the optional runhook, if given
 func (f *FakeExec) Run(cmd string, args ...string) ([]byte, error) {
+	if f.runHook != nil {
+		return f.runHook(cmd, args...)
+	}
+	return nil, nil
+}
+
+func (f *FakeExec) RunContext(ctx context.Context, cmd string, args ...string) ([]byte, error) {
 	if f.runHook != nil {
 		return f.runHook(cmd, args...)
 	}
