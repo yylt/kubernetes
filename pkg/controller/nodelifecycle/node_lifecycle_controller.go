@@ -838,7 +838,7 @@ func (nc *Controller) monitorNodeHealth() error {
 
 			_, needsRetry := nc.nodesToRetry.Load(node.Name)
 			switch {
-			case currentReadyCondition.Status != v1.ConditionTrue && observedReadyCondition.Status == v1.ConditionTrue:
+			case currentReadyCondition.Status == v1.ConditionUnknown && observedReadyCondition.Status != currentReadyCondition.Status:
 				// Report node event only once when status changed.
 				nodeutil.RecordNodeStatusChange(nc.recorder, node, "NodeNotReady")
 				fallthrough
