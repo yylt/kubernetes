@@ -44,6 +44,9 @@ const (
 
 func getCredentialsFromSecret(k8s kubernetes.Interface, secretRef *api.SecretReference) (map[string]string, error) {
 	credentials := map[string]string{}
+	if secretRef.Namespace == "" {
+		secretRef.Namespace = "ceph"
+	}
 	secret, err := k8s.CoreV1().Secrets(secretRef.Namespace).Get(context.TODO(), secretRef.Name, meta.GetOptions{})
 	if err != nil {
 		return credentials, errors.New(log("failed to find the secret %s in the namespace %s with error: %v", secretRef.Name, secretRef.Namespace, err))
