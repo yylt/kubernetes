@@ -91,7 +91,7 @@ func AddHandlers(h printers.PrintHandler) {
 		{Name: "Name", Type: "string", Format: "name", Description: metav1.ObjectMeta{}.SwaggerDoc()["name"]},
 		{Name: "Ready", Type: "string", Description: "The aggregate readiness state of this pod for accepting traffic."},
 		{Name: "Status", Type: "string", Description: "The aggregate status of the containers in this pod."},
-		{Name: "Restarts", Type: "string", Description: "The number of times the containers in this pod have been restarted and when the last container in this pod has restarted."},
+		{Name: "Restarts", Type: "integer", Description: "The number of times the containers in this pod have been restarted."},
 		{Name: "Age", Type: "string", Description: metav1.ObjectMeta{}.SwaggerDoc()["creationTimestamp"]},
 		{Name: "IP", Type: "string", Priority: 1, Description: apiv1.PodStatus{}.SwaggerDoc()["podIP"]},
 		{Name: "Node", Type: "string", Priority: 1, Description: apiv1.PodSpec{}.SwaggerDoc()["nodeName"]},
@@ -818,8 +818,6 @@ func printPod(pod *api.Pod, options printers.GenerateOptions) ([]metav1.TableRow
 	restartableInitContainerRestarts := 0
 	totalContainers := len(pod.Spec.Containers)
 	readyContainers := 0
-	lastRestartDate := metav1.NewTime(time.Time{})
-	lastRestartableInitContainerRestartDate := metav1.NewTime(time.Time{})
 
 	reason := string(pod.Status.Phase)
 	if pod.Status.Reason != "" {
@@ -856,21 +854,6 @@ func printPod(pod *api.Pod, options printers.GenerateOptions) ([]metav1.TableRow
 	for i := range pod.Status.InitContainerStatuses {
 		container := pod.Status.InitContainerStatuses[i]
 		restarts += int(container.RestartCount)
-		if container.LastTerminationState.Terminated != nil {
-			terminatedDate := container.LastTerminationState.Terminated.FinishedAt
-			if lastRestartDate.Before(&terminatedDate) {
-				lastRestartDate = terminatedDate
-			}
-		}
-		if isRestartableInitContainer(initContainers[container.Name]) {
-			restartableInitContainerRestarts += int(container.RestartCount)
-			if container.LastTerminationState.Terminated != nil {
-				terminatedDate := container.LastTerminationState.Terminated.FinishedAt
-				if lastRestartableInitContainerRestartDate.Before(&terminatedDate) {
-					lastRestartableInitContainerRestartDate = terminatedDate
-				}
-			}
-		}
 		switch {
 		case container.State.Terminated != nil && container.State.Terminated.ExitCode == 0:
 			continue
@@ -904,18 +887,11 @@ func printPod(pod *api.Pod, options printers.GenerateOptions) ([]metav1.TableRow
 
 	if !initializing || isPodInitializedConditionTrue(&pod.Status) {
 		restarts = restartableInitContainerRestarts
-		lastRestartDate = lastRestartableInitContainerRestartDate
 		hasRunning := false
 		for i := len(pod.Status.ContainerStatuses) - 1; i >= 0; i-- {
 			container := pod.Status.ContainerStatuses[i]
 
 			restarts += int(container.RestartCount)
-			if container.LastTerminationState.Terminated != nil {
-				terminatedDate := container.LastTerminationState.Terminated.FinishedAt
-				if lastRestartDate.Before(&terminatedDate) {
-					lastRestartDate = terminatedDate
-				}
-			}
 			if container.State.Waiting != nil && container.State.Waiting.Reason != "" {
 				reason = container.State.Waiting.Reason
 			} else if container.State.Terminated != nil && container.State.Terminated.Reason != "" {
@@ -948,12 +924,7 @@ func printPod(pod *api.Pod, options printers.GenerateOptions) ([]metav1.TableRow
 		reason = "Terminating"
 	}
 
-	restartsStr := strconv.Itoa(restarts)
-	if restarts != 0 && !lastRestartDate.IsZero() {
-		restartsStr = fmt.Sprintf("%d (%s ago)", restarts, translateTimestampSince(lastRestartDate))
-	}
-
-	row.Cells = append(row.Cells, pod.Name, fmt.Sprintf("%d/%d", readyContainers, totalContainers), reason, restartsStr, translateTimestampSince(pod.CreationTimestamp))
+	row.Cells = append(row.Cells, pod.Name, fmt.Sprintf("%d/%d", readyContainers, totalContainers), reason, int64(restarts), translateTimestampSince(pod.CreationTimestamp))
 	if options.Wide {
 		nodeName := pod.Spec.NodeName
 		nominatedNodeName := pod.Status.NominatedNodeName
