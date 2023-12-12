@@ -324,9 +324,9 @@ func (s *projectedVolumeMounter) collectData(mounterArgs volume.MounterArgs) (ma
 			// When FsGroup is set, we depend on SetVolumeOwnership to
 			// change from 0600 to 0640.
 			mode := *s.source.DefaultMode
-			if mounterArgs.FsUser != nil || mounterArgs.FsGroup != nil {
-				mode = 0600
-			}
+			// if mounterArgs.FsUser != nil || mounterArgs.FsGroup != nil {
+			// 	mode = 0600
+			// }
 
 			var auds []string
 			if len(tp.Audience) != 0 {
