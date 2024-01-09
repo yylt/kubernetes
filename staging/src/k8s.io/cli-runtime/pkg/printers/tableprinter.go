@@ -172,7 +172,7 @@ func podHide(tableRow *metav1.TableRow, podStatusIndex int, showAll bool) bool {
 		return false
 	}
 
-	if !showAll && (status == "Completed" || status == "Evicted") {
+	if !showAll && (status == "Completed" || status == "Evicted" || status == "ContainerStatusUnknown" || status == "Init:ContainerStatusUnknown") {
 		return true
 	}
 	return false

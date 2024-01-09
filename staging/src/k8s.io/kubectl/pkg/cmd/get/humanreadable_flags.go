@@ -59,7 +59,7 @@ func (f *HumanPrintFlags) EnsureWithNamespace() error {
 	return nil
 }
 
-// AllowedShowAll ebable show all pods, include 'Completed' and 'Evicted' stat
+// AllowedShowAll ebable show all pods, include 'Completed' 'ContainerStatusUnknown' and 'Evicted' stat
 func (f *HumanPrintFlags) AllowedShowAll() error {
 	showAll := true
 	f.ShowAll = &showAll
@@ -130,7 +130,7 @@ func (f *HumanPrintFlags) AddFlags(c *cobra.Command) {
 		c.Flags().BoolVar(f.ShowKind, "show-kind", *f.ShowKind, "If present, list the resource type for the requested object(s).")
 	}
 	if f.ShowAll != nil {
-		c.Flags().BoolVarP(f.ShowAll, "show-all", "a", *f.ShowAll, "If true, show all pods include Completed and Evicted pod.")
+		c.Flags().BoolVarP(f.ShowAll, "show-all", "a", *f.ShowAll, "If true, show all pods include Completed ContainerStatusUnknown and Evicted pod.")
 	}
 }
 
