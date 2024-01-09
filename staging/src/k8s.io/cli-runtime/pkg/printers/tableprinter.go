@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"io"
 	"reflect"
+	"regexp"
 	"strings"
 	"time"
 
@@ -33,6 +34,7 @@ import (
 )
 
 var _ ResourcePrinter = &HumanReadablePrinter{}
+var statusPattern = regexp.MustCompile("Completed|Evicted|ContainerStatusUnknown|Init:ContainerStatusUnknown")
 
 type printHandler struct {
 	columnDefinitions []metav1.TableColumnDefinition
@@ -172,7 +174,7 @@ func podHide(tableRow *metav1.TableRow, podStatusIndex int, showAll bool) bool {
 		return false
 	}
 
-	if !showAll && (status == "Completed" || status == "Evicted" || status == "ContainerStatusUnknown" || status == "Init:ContainerStatusUnknown") {
+	if !showAll && statusPattern.MatchString(status) {
 		return true
 	}
 	return false
