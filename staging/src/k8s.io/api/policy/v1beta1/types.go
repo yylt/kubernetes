@@ -170,7 +170,7 @@ const (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +k8s:prerelease-lifecycle-gen:introduced=1.5
 // +k8s:prerelease-lifecycle-gen:deprecated=1.21
-// +k8s:prerelease-lifecycle-gen:removed=1.25
+// +k8s:prerelease-lifecycle-gen:removed=1.29
 // +k8s:prerelease-lifecycle-gen:replacement=policy,v1,PodDisruptionBudget
 
 // PodDisruptionBudget is an object to define the max disruption that can be caused to a collection of pods
@@ -193,7 +193,7 @@ type PodDisruptionBudget struct {
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +k8s:prerelease-lifecycle-gen:introduced=1.5
 // +k8s:prerelease-lifecycle-gen:deprecated=1.21
-// +k8s:prerelease-lifecycle-gen:removed=1.25
+// +k8s:prerelease-lifecycle-gen:removed=1.29
 // +k8s:prerelease-lifecycle-gen:replacement=policy,v1,PodDisruptionBudgetList
 
 // PodDisruptionBudgetList is a collection of PodDisruptionBudgets.
