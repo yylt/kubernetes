@@ -37,6 +37,7 @@ import (
 	autoscalingapiv1 "k8s.io/api/autoscaling/v1"
 	autoscalingapiv2 "k8s.io/api/autoscaling/v2"
 	batchapiv1 "k8s.io/api/batch/v1"
+	batchapiv1beta1 "k8s.io/api/batch/v1beta1"
 	certificatesapiv1 "k8s.io/api/certificates/v1"
 	certificatesv1alpha1 "k8s.io/api/certificates/v1alpha1"
 	coordinationapiv1 "k8s.io/api/coordination/v1"
@@ -776,6 +777,7 @@ var (
 	// for more details.
 	legacyBetaEnabledByDefaultResources = []schema.GroupVersionResource{
 		policyapiv1beta1.SchemeGroupVersion.WithResource("poddisruptionbudgets"),          // remove in 1.25
+		batchapiv1beta1.SchemeGroupVersion.WithResource("cronjobs"),                       // remove in 1.25
 		flowcontrolv1beta2.SchemeGroupVersion.WithResource("flowschemas"),                 // remove in 1.29
 		flowcontrolv1beta2.SchemeGroupVersion.WithResource("prioritylevelconfigurations"), // remove in 1.29
 		flowcontrolv1beta3.SchemeGroupVersion.WithResource("flowschemas"),                 // deprecate in 1.29, remove in 1.32
@@ -786,6 +788,7 @@ var (
 		admissionregistrationv1beta1.SchemeGroupVersion,
 		authenticationv1beta1.SchemeGroupVersion,
 		policyapiv1beta1.SchemeGroupVersion,
+		batchapiv1beta1.SchemeGroupVersion,
 		storageapiv1beta1.SchemeGroupVersion,
 		flowcontrolv1beta1.SchemeGroupVersion,
 		flowcontrolv1beta2.SchemeGroupVersion,
